@@ -25,6 +25,31 @@ struct ProcessorStatus {
     int negative;
 };
 
+unsigned char packProcessorStatus(struct ProcessorStatus p) {
+    unsigned char byte = 0;
+    byte |= p.negative << 7;
+    byte |= p.overflow << 6;
+    byte |= (1 << 5);
+    // bit 4 is zero when NMI causes p to be packed and pushed
+    // bit 4 is one  when BRK causes p to be packed and pushed
+    byte |= p.decimal << 3;
+    byte |= p.interruptDisable << 2;
+    byte |= p.zero << 1;
+    byte |= p.carry;
+    return byte;
+}
+
+struct ProcessorStatus unpackProcessorStatus(unsigned char byte){
+    struct ProcessorStatus p;
+    p.negative = (byte >> 7) & 1;
+    p.overflow = (byte >> 6) & 1;
+    p.decimal = (byte >> 3) & 1;
+    p.interruptDisable = (byte >> 2) & 1;
+    p.zero = (byte >> 1) & 1;
+    p.carry = byte & 1;
+    return p;
+}
+
 struct Registers {
     unsigned char A;
     unsigned char X;
@@ -85,7 +110,8 @@ struct PPUStatus {
 struct PPUCtrl ppuCtrl = {0,0,0,0,0,0,0};
 struct PPUStatus ppuStatus = {0,0,0};
 
-
+int nmiFlipFlop = 0;
+int performingNMI = 0;
 
 unsigned char read2002() {
     // reading PPU status register
@@ -104,6 +130,7 @@ unsigned char read2002() {
 void write2000(unsigned char byte) {
     ppuCtrl.nmiOutput = (byte >> 7) & 1; // might have immediate effect
     if(ppuCtrl.nmiOutput) printf("write to PPU ctrl enabled NMI on start of vblank\n");
+    else printf("NMI on start of vblank DISABLED\n");
     ppuCtrl.extMaster = (byte >> 6) & 1;
     ppuCtrl.spriteSize = (byte >> 5) & 1; // 8x8 or 8x16
     ppuCtrl.bgPatternAddress = (byte >> 4) & 1; // 0000 or 1000
@@ -132,6 +159,39 @@ void printBits(int byte){
     printf("%c", (byte >> 5) & 1 ? '1' : '0');
     printf("%c", (byte >> 6) & 1 ? '1' : '0');
     printf("%c", (byte >> 7) & 1 ? '1' : '0');
+}
+
+char * locationName(int addr){
+    switch(addr){
+        case 0x8ee6: return "InitScroll";
+        case 0x80ae: return "InitScroll call in NMI";
+        case 0x8edd: return "UpdateScreen";
+        case 0x80c6: return "UpdateScreen call in NMI";
+        case 0x8eed: return "WritePPUReg1";
+        case 0x8eac: return "WritePPUReg1 call in WriteBufferToScreen";
+        case 0xf2d0: return "SoundEngine";
+        case 0x80e7: return "SoundEngine call in NMI";
+        case 0x8e5c: return "ReadJoypads";
+        case 0x80ea: return "ReadJoypads call in NMI";
+        case 0x8e6a: return "ReadPortBits";
+        case 0x8e69: return "ReadPortBits call in ReadJoypads";
+        case 0x8182: return "PauseRoutine";
+        case 0x80ed: return "PauseRoutine call in NMI";
+        case 0x8f97: return "UpdateTopScore";
+        case 0x80f0: return "UpdateTopScore call in NMI";
+        case 0x8f9e: return "TopScoreCheck";
+        case 0x8f9c: return "TopScoreCheck call in UpdateTopScore";
+        //case 0x8212: return "MoveSpritesOffscreen";
+        //case 0x8178: return "MoveSpritesOffscreen call in NMI";
+        case 0x8212: return "OperModeExecutionTree";
+        case 0x8178: return "OperModeExecutionTree call in NMI";
+        case 0x8e04: return "JumpEngine";
+        case 0x8218: return "JumpEngine call in OperModeExecutionTree";
+        case 0xdc82: return "Mystery Location 1, line 11918";
+        //case 0x0008: return "SpriteShuffler";
+        //case 0x0009: return "OperModeExecutionTree";
+        default: return "????";
+    }
 }
 
 struct Instruction * instructionFromOpcode(int opcode){
@@ -280,6 +340,21 @@ void writeMemory(int addr, unsigned char byte){
     else memory[addr] = byte;
 }
 
+unsigned char adc(unsigned char a, unsigned char b, int carry, struct ProcessorStatus *p){
+    unsigned u = a + b + carry;
+    unsigned char c = u;
+    p->carry = u > 255;
+    p->negative = !!(u & 0x80);
+    p->zero = c == 0;
+    p->overflow = !!(~(a ^ b) & (a ^ c) & 0x80);
+
+    return c;
+}
+
+unsigned char sbc(unsigned char a, unsigned char b, int carry, struct ProcessorStatus *p){
+    return adc(a, ~b, carry, p);
+}
+
 int nextCPUDelay(){
     // this could easily be a table, opcode -> cycles
     int arg1, arg2;
@@ -294,6 +369,15 @@ void nmiCPU(){
     // push status register on stack (1 cycle)
     // set I flag and fetch FFFE (1 cycle)
     // fetch FFFF and update PC (1 cycle)
+    memory[0x0100 + regs.S] = regs.PC >> 8;
+    regs.S--;
+    memory[0x0100 + regs.S] = regs.PC & 0xff;
+    regs.S--;
+    memory[0x0100 + regs.S] = packProcessorStatus(regs.P);
+    regs.S--;
+    regs.P.interruptDisable = 1;
+    regs.PC = vectors.nmi;
+    printf("NMI executed\n");
 }
 
 // fetch next instruction and execute effects
@@ -305,6 +389,10 @@ void stepCPU(){
     int arg21;
     int addr;
     unsigned char m;
+    unsigned char c;
+    unsigned char bit;
+    int lower;
+    int upper;
 
     //printf(" pc=%04x %s ", regs.PC, ins->mnemonic);
 
@@ -314,11 +402,24 @@ void stepCPU(){
         case 0x78: // SEI
             regs.P.interruptDisable = 1;
             break;
+
+        case 0x38: // SEC
+            printf("sec\n");
+            regs.P.carry = 1;
+            break;
+
         case 0xd8: // CLD
             regs.P.decimal = 0;
             break;
 
+        case 0x18: // CLC
+            printf("clc\n");
+            regs.P.carry = 0;
+            break;
+
+
         case 0xc9: // CMP
+            printf("cmp %02x\n", arg1);
             regs.P.carry = regs.A >= arg1;
             regs.P.zero  = regs.A == arg1;
             regs.P.negative  = regs.A < arg1;
@@ -330,6 +431,14 @@ void stepCPU(){
             regs.P.negative  = regs.X < arg1;
             break;
 
+        case 0xec: // CPX $0201
+            arg21 = (arg2 << 8) | arg1;
+            m = readMemory(arg21);
+            printf("cpx %04x,  mem there = %02x\n", arg21, m);
+            exit(1);
+            
+            break;
+
         case 0xc0: // CPY
             regs.P.carry = regs.Y >= arg1;
             regs.P.zero  = regs.Y == arg1;
@@ -338,7 +447,15 @@ void stepCPU(){
             
 
         case 0xa9: // LDA #$7f
+            printf("lda #$%02x\n", arg1);
             regs.A = arg1;
+            regs.P.zero     = regs.A == 0;
+            regs.P.negative = regs.A > 0x7f;
+            break;
+
+        case 0xa5: // LDA $25
+            printf("lda $%02x\n", arg1);
+            regs.A = memory[arg1];
             regs.P.zero     = regs.A == 0;
             regs.P.negative = regs.A > 0x7f;
             break;
@@ -348,19 +465,37 @@ void stepCPU(){
             // this potentially has side effects e.g. if reading from $2002
             arg21 = (arg2 << 8) | arg1;
             regs.A = readMemory(arg21);
+            printf("lda $%04x   getting A=%02x\n", arg21, regs.A);
             regs.P.zero = regs.A == 0;
             regs.P.negative = regs.A > 0x7f;
             break;
 
         case 0xbd: // LDA $0205, X
-            arg21 = (((arg2 << 8) | arg1) + regs.X) & 0xffff;
+            arg21 = (arg2 << 8) | arg1;
+            addr = (arg21 + regs.X) & 0xffff;
+            printf("lda %04x, X=%02x   getting ", arg21, regs.X);
             regs.A = readMemory(arg21);
+            printf("A<=%02x\n", regs.A);
+            regs.P.zero     = regs.A == 0;
+            regs.P.negative = regs.A > 0x7f;
+            break;
+
+        case 0xb1: // LDA ($00), Y
+            printf("lda ($%02x), Y=%02x  mem there = %02x\n", arg1, regs.Y, memory[arg1]);
+            lower = memory[arg1];
+            upper = memory[(arg1+1) & 0xff];
+            addr = (upper << 8) | lower;
+            addr += regs.Y;
+            addr &= 0xffff;
+            printf("at %02x found %04x\n", arg1, addr);
+            regs.A = readMemory(addr);
+            printf("at %04x found %02x\n", addr, regs.A);
             regs.P.zero     = regs.A == 0;
             regs.P.negative = regs.A > 0x7f;
             break;
 
         case 0x85: // STA $06
-            printf("sta %02x\n", arg1);
+            printf("sta %02x   putting %02x in addr %02x\n", arg1, regs.A, arg1);
             memory[arg1] = regs.A;
             break;
 
@@ -385,14 +520,46 @@ void stepCPU(){
             writeMemory(arg21 + regs.Y, regs.A);
             break;
 
+        case 0x9d: // STA $0205, X
+            printf("sta %02x %02x, X where X=%02x\n", arg1, arg2, regs.X);
+            arg21 = (arg2 << 8) | arg1;
+            addr = (arg21 + regs.X) & 0xffff;
+            printf("writing A=%02x to %04x\n", regs.A, arg21 + regs.X);
+            writeMemory(addr, regs.A);
+            break;
+
         case 0xa2: // LDX #$7f
+            printf("ldx %02x\n", arg1);
             regs.X = arg1;
             regs.P.zero     = regs.X == 0;
             regs.P.negative = regs.X > 0x7f;
             break;
 
+        case 0xae: // LDX $0203
+            arg21 = (arg2 << 8) | arg1;
+            regs.X = readMemory(arg21);
+            regs.P.zero     = regs.X == 0;
+            regs.P.negative = regs.X > 0x7f;
+            break;
+
+        case 0xbe: // LDX $0203, Y
+            arg21 = (arg2 << 8) | arg1;
+            addr = (arg21 + regs.Y) & 0xffff;
+            regs.X = readMemory(addr);
+            regs.P.zero     = regs.X == 0;
+            regs.P.negative = regs.X > 0x7f;
+            break;
+
         case 0xa0: // LDY #$7f
+            printf("ldy %02x\n", arg1);
             regs.Y = arg1;
+            regs.P.zero     = regs.Y == 0;
+            regs.P.negative = regs.Y > 0x7f;
+            break;
+
+        case 0xac: // LDY $0203
+            arg21 = (arg2 << 8) | arg1;
+            regs.Y = readMemory(arg21);
             regs.P.zero     = regs.Y == 0;
             regs.P.negative = regs.Y > 0x7f;
             break;
@@ -407,6 +574,40 @@ void stepCPU(){
 
         case 0x8a: // TXA
             regs.A = regs.X;
+            regs.P.zero     = regs.A == 0;
+            regs.P.negative = regs.A > 0x7f;
+            break;
+
+        case 0x98: // TYA
+            regs.A = regs.Y;
+            regs.P.zero     = regs.A == 0;
+            regs.P.negative = regs.A > 0x7f;
+            break;
+
+        case 0xaa: // TAX
+            regs.X = regs.A;
+            regs.P.zero     = regs.X == 0;
+            regs.P.negative = regs.X > 0x7f;
+            break;
+
+        case 0xa8: // TAY
+            printf("tay moving %02x to Y\n", regs.A);
+            regs.Y = regs.A;
+            regs.P.zero     = regs.Y == 0;
+            regs.P.negative = regs.Y > 0x7f;
+            break;
+
+        case 0x48: // PHA
+            memory[0x0100 + regs.S] = regs.A;
+            regs.S--;
+            break;
+
+        case 0x68: // PLA
+            regs.S++;
+            regs.A = memory[0x0100 + regs.S];
+            printf("pla pops %02x from stack\n", regs.A);
+            regs.P.zero     = regs.A == 0;
+            regs.P.negative = regs.A > 0x7f;
             break;
 
         case 0x10: // BPL #7 branch if positive
@@ -414,23 +615,118 @@ void stepCPU(){
             break;
 
         case 0xb0: // BCS #3 branch if carry
+            printf("bcs %02x (c = %d)\n", arg1, regs.P.carry);
             if(regs.P.carry) regs.PC += UNCOMPLEMENT(arg1);
             break;
 
+        case 0x90: // BCC #3 branch if carry clear
+            if(regs.P.carry == 0) regs.PC += UNCOMPLEMENT(arg1);
+            break;
+
         case 0xd0: // BNE #4 branch if not equal
+            printf("bne %02x\n", arg1);
             if(regs.P.zero == 0) regs.PC += UNCOMPLEMENT(arg1);
             break;
 
+        case 0xf0: // BEQ #6 branch if equal
+            printf("beq %02x (z = %d)\n", arg1, regs.P.zero);
+            if(regs.P.zero) {
+                printf("we're taking this branch, %d\n", UNCOMPLEMENT(arg1));
+                printf("PC = %04x\n", regs.PC);
+                regs.PC += UNCOMPLEMENT(arg1);
+                printf("PC = %04x\n", regs.PC);
+            }
+            break;
+
+        case 0x0a: // ASL
+            printf("asl A=%02x -> ", regs.A);
+            regs.P.carry = (regs.A >> 7) & 1;
+            regs.A = regs.A << 1;
+            regs.P.zero = regs.A == 0;
+            regs.P.negative = (regs.A >> 7) & 1;
+            printf("%02x\n", regs.A);
+            break;
+
+        case 0x4a: // LSR
+            printf("lsr\n");
+            regs.P.carry = regs.A & 1;
+            regs.A = regs.A >> 1;
+            regs.P.zero = regs.A == 0;
+            regs.P.negative = (regs.A >> 7) & 1;
+            break;
+
+        case 0x2a: // ROL
+            bit = regs.P.carry;
+            regs.P.carry = regs.A >> 7;
+            regs.A = (regs.A << 1) | bit;
+            regs.P.zero = regs.A == 0;
+            regs.P.negative = (regs.A >> 7) & 1;
+            break;
+
+        case 0x7e: // ROR $0201, X
+            arg21 = (arg2 << 8) | arg1;
+            addr = (arg21 + regs.X) & 0xffff;
+            printf("ror $%04x, X=%02x\n", arg21, regs.X);
+            bit = regs.P.carry;
+            m = readMemory(addr);
+            regs.P.carry = m & 1;
+            m = (bit << 7) | (m >> 1);
+            regs.P.zero     = m == 0;
+            regs.P.negative = (m >> 7) & 1;
+            writeMemory(addr, m);
+            break;
+
         case 0x09: // ORA #$1f
+            printf("ora A=%02x with %02x = %02x\n", regs.A, arg1, regs.A | arg1);
             regs.A = regs.A | arg1;
             regs.P.zero     = regs.A == 0;
             regs.P.negative = regs.A > 0x7f;
             break;
 
+        case 0x05: // ORA $1f
+            regs.A = regs.A | memory[arg1];
+            regs.P.zero     = regs.A == 0;
+            regs.P.negative = regs.A > 0x7f;
+            break;
+
         case 0x29: // AND #$1f
+            printf("and %02x\n", arg1);
             regs.A = regs.A & arg1;
             regs.P.zero     = regs.A == 0;
             regs.P.negative = regs.A > 0x7f;
+            break;
+
+        case 0x3d: // AND $0201
+            arg21 = (arg2 << 8) | arg1;
+            m = readMemory(arg21);
+            regs.A = regs.A & m;
+            regs.P.zero     = regs.A == 0;
+            regs.P.negative = regs.A > 0x7f;
+            break;
+
+        case 0x45: // EOR $11
+            m = memory[arg1];
+            printf("eor $%02x,  getting #$%02x\n", arg1, m);
+            regs.A = regs.A ^ m;
+            regs.P.zero     = regs.A == 0;
+            regs.P.negative = regs.A > 0x7f;
+            break;
+
+        case 0x65: // ADC $3c
+            // A = A + mem[arg1] + C
+            m = memory[arg1];
+            printf("(adc 65) %02x + %02x + %d = ", regs.A, m, regs.P.carry);
+            regs.A = adc(regs.A, m, regs.P.carry, &regs.P);
+            printf("%02x\n", regs.A);
+            break;
+
+        case 0xf9: // SBC $0201, Y
+            arg21 = (arg2 << 8) | arg1;
+            addr = (arg21 + regs.Y) & 0xffff;
+            m = readMemory(addr);
+            printf("(sbc f9) %02x - %02x - %d = ", regs.A, m, !regs.P.carry);
+            regs.A = sbc(regs.A, m, regs.P.carry, &regs.P);
+            printf("%02x\n", regs.A);
             break;
 
         case 0x2c: // BIT $0203
@@ -463,7 +759,35 @@ void stepCPU(){
             regs.P.negative = m + 1 > 0x7f;
             break;
 
+        case 0xe6: // INC $11
+            printf("(inc e6) increment memory %04x\n", arg1);
+            m = memory[arg1];
+            c = m + 1;
+            printf("%02x => %02x\n", m, c);
+            memory[arg1] = c;
+            regs.P.zero     = c == 0;
+            regs.P.negative = c > 0x7f;
+            break;
+
+        case 0xce: // DEC $0203
+            arg21 = (arg2 << 8) | arg1;
+            printf("decrement memory %04x\n", arg21);
+            m = readMemory(arg21);
+            c = m - 1;
+            printf("%02x => %02x\n", m, c);
+            writeMemory(arg21, c);
+            regs.P.zero     = c == 0;
+            regs.P.negative = c > 0x7f;
+            break;
+
+        case 0xe8: // INX
+            regs.X++;
+            regs.P.zero     = regs.X == 0;
+            regs.P.negative = regs.X > 0x7f;
+            break;
+
         case 0xc8: // INY
+            printf("iny, now Y=%02x\n", regs.Y);
             regs.Y++;
             regs.P.zero     = regs.Y == 0;
             regs.P.negative = regs.Y > 0x7f;
@@ -471,7 +795,7 @@ void stepCPU(){
 
         case 0x20: // JSR $8100
             arg21 = (arg2 << 8) | arg1;
-            printf("S=%02x, JSR from %04x to %04x\n", regs.S, regs.PC, arg21);
+            printf("S=%02x, JSR from %04x to %04x (%s)\n", regs.S, regs.PC, arg21, locationName(arg21));
             memory[0x0100 + regs.S] = regs.PC >> 8;
             regs.S--;
             memory[0x0100 + regs.S] = regs.PC & 0xff;
@@ -485,12 +809,34 @@ void stepCPU(){
             regs.PC = memory[0x0100 + regs.S];
             regs.S++;
             regs.PC |= memory[0x0100 + regs.S] << 8;
-            printf("%04x\n", regs.PC);
+            printf("%04x (%s)\n", regs.PC, locationName(regs.PC));
             break;
 
         case 0x4c: // JMP $810c
             arg21 = (arg2 << 8) | arg1;
             regs.PC = arg21;
+            break;
+
+        case 0x6c: // JMP ($0123)
+            arg21 = (arg2 << 8) | arg1;
+            lower = readMemory(arg21);
+            upper = readMemory((arg21 + 1) & 0xffff);
+            addr = (upper << 8) | lower;
+            printf("jmp ($%04x)  mem there = %02x %02x\n", arg21, lower, upper);
+            regs.PC = addr;
+            printf("new PC = %04x (%s)\n", regs.PC, locationName(regs.PC));
+            break;
+
+        case 0x40: // RTI
+            regs.S++;
+            m = memory[0x0100 + regs.S];
+            regs.S++;
+            lower = memory[0x0100 + regs.S];
+            regs.S++;
+            upper = memory[0x0100 + regs.S];
+            addr = (upper << 8) | lower; 
+            regs.P = unpackProcessorStatus(m);
+            regs.PC = addr;
             break;
 
         default:
@@ -701,6 +1047,12 @@ int main(){
                 if(scanline == 241 && dot == 0){
                     ppuStatus.inVblank = 1;
                     // if NMI out = 1, signal NMI
+                    if(ppuCtrl.nmiOutput){
+                        nmiFlipFlop = 1;
+                    }
+                    else{
+                        printf("NMI output disabled, no NMI\n");
+                    }
                 }
 
                 // if we just started line 0, undo vertical blanking
@@ -725,10 +1077,22 @@ int main(){
 
                 cpuDots--;
                 if(cpuDots == 0){
-//printf("(%d,%d) step cpu... ", dot, scanline);
-                    stepCPU();
-                    cpuDots = 3 * nextCPUDelay();
-//printf("... next instruction in %d dots\n", cpuDots);
+                    if(nmiFlipFlop){
+                        stepCPU();
+                        cpuDots = 3 * 7;
+                        nmiFlipFlop = 0;
+                        performingNMI = 1;
+                    }
+                    else if(performingNMI){
+                        nmiCPU();
+                        cpuDots = 3 * nextCPUDelay();
+                        nmiFlipFlop = 0;
+                        performingNMI = 0;
+                    }
+                    else{
+                        stepCPU();
+                        cpuDots = 3 * nextCPUDelay();
+                    }
                 }
             }
         }
