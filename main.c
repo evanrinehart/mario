@@ -83,13 +83,22 @@ int screenScale = 3;
 Image screenImg;
 Texture2D screenTex;
 
-unsigned char ppuMemory[16384];
 // $0000 - $1fff the CHR ROM
 // $2000 - $2fff vram nametables (subject to mirroring)
 // $3000 - $3eff unused
 // $3f00 - $3f1f palette RAM indexes
 // $3f20 - $3fff mirrors
+#define VRAM_SIZE 0x4000
+#define VRAM_MAX  0x3fff
+unsigned char ppuMemory[VRAM_SIZE];
 unsigned char oam[256]; // 64 x 4 bytes
+int ppuAddr = 0; // also used for ppuV, internal scroll position
+int oamAddr = 0;
+int ppuT = 0; // internal coarse-x scroll position
+int ppuX = 0; // internal fine-x scroll position
+int ppuW = 0; // write toggle
+int ppuScrollX = 0;
+int ppuScrollY = 0;
 
 struct PPUCtrl {
     int nametableBase;
@@ -101,6 +110,17 @@ struct PPUCtrl {
     int nmiOutput;
 };
 
+struct PPUMask {
+    int emphasisB;
+    int emphasisG;
+    int emphasisR;
+    int showSprites;
+    int showBackground;
+    int showSpritesLeft;
+    int showBackgroundLeft;
+    int grayscale;
+};
+
 struct PPUStatus {
     int spriteOverflow;
     int spriteZeroHit;
@@ -108,6 +128,7 @@ struct PPUStatus {
 };
 
 struct PPUCtrl ppuCtrl = {0,0,0,0,0,0,0};
+struct PPUMask ppuMask = {0,0,0,0,0,0,0,0};
 struct PPUStatus ppuStatus = {0,0,0};
 
 int nmiFlipFlop = 0;
@@ -140,7 +161,14 @@ void write2000(unsigned char byte) {
 }
 
 void write2001(unsigned char byte) {
-    printf("write2001(%02x)\n", byte);
+    ppuMask.emphasisB = (byte >> 7) & 1;
+    ppuMask.emphasisG = (byte >> 6) & 1;
+    ppuMask.emphasisR = (byte >> 5) & 1;
+    ppuMask.showSprites = (byte >> 4) & 1;
+    ppuMask.showBackground = (byte >> 3) & 1;
+    ppuMask.showSpritesLeft = (byte >> 2) & 1;
+    ppuMask.showBackgroundLeft = (byte >> 1) & 1;
+    ppuMask.grayscale = (byte >> 0) & 1;
 }
 
 
@@ -242,8 +270,9 @@ struct Instruction * fetchInstruction(int addr, int * arg1, int * arg2){
 }
 
 unsigned char readMemory(int addr){
+
     if(addr == 0x2000 || addr == 0x2001 || addr == 0x2003 || addr == 0x2005 || addr == 0x2006){
-        printf("read from $%04x (normally write only)\n", addr);
+        printf("WEIRD read from $%04x (normally write only)\n", addr);
         return 0;
     }
     else if(addr == 0x2002){
@@ -251,8 +280,9 @@ unsigned char readMemory(int addr){
         return read2002();
     }
     else if(addr == 0x2004){
+        // technically, this read only reliably works during vertical or horizontal blanking.
         printf("read from $2004 (OAM data)\n");
-        return 0;
+        return oam[oamAddr];
     }
     else if(addr == 0x2007){
         printf("read from $2007 (PPU data)\n");
@@ -282,11 +312,11 @@ unsigned char readMemory(int addr){
 }
 
 void writeMemory(int addr, unsigned char byte){
-    if(addr == 0x2000 /*|| addr == 0x0778 */) {
+    if(addr == 0x2000) {
         printf("write %02x to %04x (PPU ctrl)\n", byte, addr);
         write2000(byte);
     }
-    else if(addr == 0x2001 /* || addr == 0x0779 */){
+    else if(addr == 0x2001){
         printf("write %02x to %04x (PPU mask)\n", byte, addr);
         write2001(byte);
     }
@@ -294,18 +324,42 @@ void writeMemory(int addr, unsigned char byte){
         printf("write %02x to $2003 (OAM addr)\n", byte);
     }
     else if(addr == 0x2004){
+        // it's probably best to ignore writes to this register unless in blanking
         printf("write %02x to $2004 (OAM data)\n", byte);
+        oam[oamAddr] = byte;
+        oamAddr = (oamAddr + 1) & 0xff;
     }
     else if(addr == 0x2005){
         printf("write %02x to $2005 (PPU scroll)\n", byte);
+        if(ppuW == 0){
+            ppuScrollX = byte;
+            ppuW = !ppuW;
+        }
+        else if(ppuW == 1){
+            ppuScrollY = byte;
+            ppuW = !ppuW;
+        }
     }
     else if(addr == 0x2006){
         printf("write %02x to $2006 (PPU addr)\n", byte);
+        ppuAddr = byte;
     }
     else if(addr == 0x2007){
-        printf("write %02x to $2007 (PPU data)\n", byte);
+        printf("write %02x to $2007 (PPU data) ppuAddr = %04x\n", byte, ppuAddr);
+        if(ppuAddr < 0x2000){
+            printf("attempting to write to CHR ROM\n");
+        }
+        else{
+            ppuMemory[ppuAddr] = byte;
+            ppuAddr = (ppuAddr + 1) & VRAM_MAX;
+        }
     }
     else if(addr == 0x4014){
+        // TODO
+        // OAM DMA is how sprites in oam are updated
+        // writing to 4014 transfers 256 from $XX00-$XXFF of cpu to OAM.
+        // the CPU is suspended during the transfer. It takes 513 or 514 cycles.
+        // the data is transferred to OAM starting at the current OAM ADDR
         printf("write %02x to $4014 (OAM DMA)\n", byte);
     }
     else if(addr >= 0x4000 && addr <= 0x4015){
@@ -900,6 +954,7 @@ void readRom(){
 
     for(int i = 0; i < chrsize; i++) {
         chr[i] = rom[16 + prgsize + i];
+        ppuMemory[i] = chr[i];
     }
 
     vectors.nmi   = (memory[0xfffb] << 8) | memory[0xfffa];
@@ -991,15 +1046,18 @@ void writeScreen(int row, int col, int r, int g, int b){
     pixel[2] = b;
 }
 
+
+int encodePatternAddress(int half, int tileNo, int bitplane, int rowNo){
+    int addr = 0;
+    addr |= half << 12;
+    addr |= tileNo << 4;
+    addr |= bitplane << 3;
+    addr |= rowNo;
+    return addr;
+}
+
+
 void resetPPU(){
-    memory[0x2000] = 0;
-    memory[0x2001] = 0;
-    memory[0x2002] = 0;
-    memory[0x2003] = 0;
-    memory[0x2005] = 0;
-    memory[0x2006] = 0;
-    memory[0x2007] = 0;
-    memory[0x4014] = 0;
 }
 
 void uploadScreen(){
@@ -1061,11 +1119,23 @@ int main(){
                 }
 
                 if(scanline >= 1 && scanline <= 240 && dot < 256){
-                    int r = chr[ptr];
-                    int g = chr[ptr+1];
-                    int b = chr[ptr+2];
-                    ptr += 4;
-                    if(ptr > 0x1ff0) ptr = 0;
+                    int row = (scanline - 1) / 8;
+                    int col = dot / 8;
+                    int tileNo = col > 15 || row > 15 ? 0 : row * 16 + col;
+                    int j = (scanline - 1) % 8;
+                    int i = dot % 8;
+                    int paddr = encodePatternAddress(1, tileNo, 0, j);
+                    int bitsH = ppuMemory[paddr];
+                    paddr = encodePatternAddress(1, tileNo, 1, j);
+                    int bitsL = ppuMemory[paddr];
+                    int level = 0;
+                    if((bitsH >> (7-i)) & 1) level |= 2;
+                    if((bitsL >> (7-i)) & 1) level |= 1;
+                    int r = level * 85;
+                    int g = level * 85;
+                    int b = level * 85;
+                    //ptr += 4;
+                    //if(ptr > 0x1ff0) ptr = 0;
 /*
                     int r = ((rand()%20) * 255) / 20;
                     int g = ((rand()%20) * 255) / 20;
