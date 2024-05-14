@@ -2,16 +2,13 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <raylib.h>
-
 #include <rom.h>
 #include <instructions.h>
 
 unsigned char memory[65536];
 
-
 int cpuTimeDilation = 1;
 int cpuFreeze = 0;
-
 
 struct InterruptVectors {
     int nmi;
@@ -247,6 +244,30 @@ char * locationName(int addr){
         case 0x9be1: return "GetBlockBufferAddr";
         case 0x8223: return "MoveSpritesOffscreen";
         case 0x81c6: return "SpriteShuffler";
+        case 0x90ed: return "GetAreaMusic";
+        case 0x92aa: return "DoNothing1";
+        case 0x92af: return "DoNothing2";
+        case 0xbc36: return "UpdateNumber";
+        case 0x8325: return "DrawMushroomIcon";
+        case 0xaeea: return "GameCoreRoutine";
+        case 0xb04a: return "GameRoutines";
+        case 0xb329: return "PlayerMovementSubs";
+        case 0x8231: return "TitleScreenMode";
+        case 0x8245: return "GameMenuRoutine";
+        case 0xb0e9: return "PlayerCtrlRoutine";
+        case 0xb36d: return "FallingSub";
+        case 0xb450: return "PlayerPhysicsSub";
+        case 0xbf09: return "MovePlayerHorizontally";
+        case 0x84c3: return "FloateyNumbersRoutine";
+        case 0xebb2: return "DrawOneSpriteRow";
+        case 0xf26d: return "DividePDiff";
+        case 0xe3ec: return "BlockBufferColli_Side";
+        case 0xeee9: return "PlayerGfxHandler";
+        case 0xbe70: return "BlockObjectsCore";
+        case 0xc047: return "EnemiesAndLoopsCore";
+        case 0xe29c: return "BoundingBoxCore";
+        case 0x858b: return "InitScreen";
+        case 0x8567: return "ScreenRoutines";
         //case 0xdc82: return "Mystery Location 1, line 11918";
         //case 0x0008: return "SpriteShuffler";
         //case 0x0009: return "OperModeExecutionTree";
@@ -303,7 +324,6 @@ void showCPU(){
 
 #define UNCOMPLEMENT(X) ((X) < 128 ? (X) : (X - 256))
 
-
 struct Instruction * fetchInstruction(int addr, int * arg1, int * arg2){
     int opcode = memory[addr];
     struct Instruction * ins = instructionFromOpcode(opcode);
@@ -356,11 +376,11 @@ unsigned char readMemory(int addr){
 
 void writeMemory(int addr, unsigned char byte){
     if(addr == 0x2000) {
-        //printf("write %02x to %04x (PPU ctrl)\n", byte, addr);
+     //   printf("write %02x to %04x (PPU ctrl)\n", byte, addr);
         write2000(byte);
     }
     else if(addr == 0x2001){
-        //printf("write %02x to %04x (PPU mask)\n", byte, addr);
+       // printf("write %02x to %04x (PPU mask)\n", byte, addr);
         write2001(byte);
     }
     else if(addr == 0x2003){
@@ -385,6 +405,7 @@ void writeMemory(int addr, unsigned char byte){
         }
     }
     else if(addr == 0x2006){
+        //printf("write %02x to $2006 (PPU addr)\n", byte);
         if(ppuW == 0){
             ppuAddr = (int)byte << 8;
             ppuW = !ppuW;
@@ -397,7 +418,7 @@ void writeMemory(int addr, unsigned char byte){
         }
     }
     else if(addr == 0x2007){
-        //printf("write %02x to $2007 (PPU data) ppuAddr = %04x\n", byte, ppuAddr);
+        //printf("write %02x to $2007 (PPU data) (addr=%04x)\n", byte, ppuAddr);
         if(ppuAddr < 0x2000){
             printf("WUT attempting to write to CHR ROM.\n");
             exit(1);
@@ -408,14 +429,15 @@ void writeMemory(int addr, unsigned char byte){
         }
     }
     else if(addr == 0x4014){
+        //printf("write %02x to $4014 (OAM DMA)\n", byte);
         // TODO
         // OAM DMA is how sprites in oam are updated
         // writing to 4014 transfers 256 from $XX00-$XXFF of cpu to OAM.
         // the CPU is suspended during the transfer. It takes 513 or 514 cycles.
         // the data is transferred to OAM starting at the current OAM ADDR
-        //printf("write %02x to $4014 (OAM DMA)\n", byte);
     }
     else if(addr >= 0x4000 && addr <= 0x4015){
+        //printf("write %02x to %04x (sound chip)\n", byte, addr);
         // TODO
         //printf("write %02x to $%04x, some sound chip control\n", byte, addr);
     }
@@ -423,7 +445,7 @@ void writeMemory(int addr, unsigned char byte){
         //printf("write %02x to $4016 (joystick stobe)\n", byte);
     }
     else if(addr == 0x4017){
-        //printf("write %02x to $4016 (apu frame counter)\n", byte);
+        //printf("write %02x to $4017 (apu frame counter)\n", byte);
     }
     else if(addr >= 0x4018 && addr <= 0x401f){
         printf("write %02x to $%04x, i/o functionality that is disabled\n", byte, addr);
@@ -505,6 +527,10 @@ void stepCPU(){
 
     if(cpuFreeze) debug();
 
+    if(regs.PC == 0x8212){
+        //printf("OperExecutionTree A=%02x OperMode=%02x Task=%02x\n", regs.A, memory[0x770], memory[0x772]);
+    }
+
     regs.PC += size;
 
     switch(ins->opcode){
@@ -513,7 +539,6 @@ void stepCPU(){
             break;
 
         case 0x38: // SEC
-            //printf("sec\n");
             regs.P.carry = 1;
             break;
 
@@ -549,6 +574,15 @@ void stepCPU(){
 
         case 0xcd: // CMP $0201
             addr = (arg2 << 8) | arg1;
+            m = readMemory(addr);
+            regs.P.carry = regs.A >= m;
+            regs.P.zero  = regs.A == m;
+            regs.P.negative  = regs.A < m;
+            break;
+
+        case 0xdd: // CMP $0201, X
+            arg21 = (arg2 << 8) | arg1;
+            addr = (arg21 + regs.X) & 0xffff;
             m = readMemory(addr);
             regs.P.carry = regs.A >= m;
             regs.P.zero  = regs.A == m;
@@ -811,7 +845,6 @@ void stepCPU(){
             break;
 
         case 0xb0: // BCS #3 branch if carry
-            //printf("bcs %02x (c = %d)\n", arg1, regs.P.carry);
             if(regs.P.carry) regs.PC += UNCOMPLEMENT(arg1);
             break;
 
@@ -847,6 +880,16 @@ void stepCPU(){
             //printf("%02x\n", regs.A);
             break;
 
+        case 0x0e: // ASL, $0201
+            addr = (arg2 << 8) | arg1;
+            m = readMemory(addr);
+            regs.P.carry = (m >> 7) & 1;
+            c = m << 1;
+            regs.P.zero = c == 0;
+            regs.P.negative = (c >> 7) & 1;
+            writeMemory(addr, c);
+            break;
+
         case 0x4a: // LSR A
             //printf("lsr\n");
             regs.P.carry = regs.A & 1;
@@ -876,7 +919,7 @@ void stepCPU(){
 
         case 0x2a: // ROL A
             bit = regs.P.carry;
-            regs.P.carry = regs.A >> 7;
+            regs.P.carry = (regs.A >> 7) & 1;
             regs.A = (regs.A << 1) | bit;
             regs.P.zero = regs.A == 0;
             regs.P.negative = (regs.A >> 7) & 1;
@@ -885,7 +928,7 @@ void stepCPU(){
         case 0x26: // ROL $14
             bit = regs.P.carry;
             m = memory[arg1];
-            regs.P.carry = m >> 7;
+            regs.P.carry = (m >> 7) & 1;
             c = (m << 1) | bit;
             regs.P.zero = c == 0;
             regs.P.negative = (c >> 7) & 1;
@@ -896,7 +939,7 @@ void stepCPU(){
             addr = (arg2 << 8) | arg1;
             bit = regs.P.carry;
             m = readMemory(addr);
-            regs.P.carry = m >> 7;
+            regs.P.carry = (m >> 7) & 1;
             c = (m << 1) | bit;
             regs.P.zero = c == 0;
             regs.P.negative = (c >> 7) & 1;
@@ -953,9 +996,27 @@ void stepCPU(){
             regs.P.negative = regs.A > 0x7f;
             break;
 
-        case 0x3d: // AND $0201
+        case 0x2d: // AND $0201
+            addr = (arg2 << 8) | arg1;
+            m = readMemory(addr);
+            regs.A = regs.A & m;
+            regs.P.zero     = regs.A == 0;
+            regs.P.negative = regs.A > 0x7f;
+            break;
+
+        case 0x3d: // AND $0201, X
             arg21 = (arg2 << 8) | arg1;
-            m = readMemory(arg21);
+            addr = (arg21 + regs.X) & 0xffff;
+            m = readMemory(addr);
+            regs.A = regs.A & m;
+            regs.P.zero     = regs.A == 0;
+            regs.P.negative = regs.A > 0x7f;
+            break;
+
+        case 0x39: // AND $0201, Y
+            arg21 = (arg2 << 8) | arg1;
+            addr = (arg21 + regs.Y) & 0xffff;
+            m = readMemory(addr);
             regs.A = regs.A & m;
             regs.P.zero     = regs.A == 0;
             regs.P.negative = regs.A > 0x7f;
@@ -989,8 +1050,21 @@ void stepCPU(){
             //printf("%02x\n", regs.A);
             break;
 
+        case 0x75: // ADC $3c, X
+            addr = (arg1 + regs.X) & 0xff;
+            m = memory[addr];
+            regs.A = adc(regs.A, m, regs.P.carry, &regs.P);
+            break;
+
         case 0x6d: // ADC $0201
             addr = (arg2 << 8) | arg1;
+            m = readMemory(addr);
+            regs.A = adc(regs.A, m, regs.P.carry, &regs.P);
+            break;
+
+        case 0x7d: // ADC $0201, X
+            arg21 = (arg2 << 8) | arg1;
+            addr = (arg21 + regs.X) & 0xffff;
             m = readMemory(addr);
             regs.A = adc(regs.A, m, regs.P.carry, &regs.P);
             break;
@@ -1004,6 +1078,14 @@ void stepCPU(){
 
         case 0xe9: // SBC #$5
             regs.A = sbc(regs.A, arg1, regs.P.carry, &regs.P);
+            break;
+
+        case 0xf5: // SBC $1f, X
+            addr = (arg1 + regs.X) & 0xff;
+            m = memory[addr];
+            //printf("(A=%02x X=%02x c=%d) sbc %04x,X {%02x} => ", regs.A, regs.X, regs.P.carry, addr, m);
+            regs.A = sbc(regs.A, m, regs.P.carry, &regs.P);
+            //printf("%02x (c=%d,z=%d,o=%d,n=%d)\n", regs.A, regs.P.carry, regs.P.zero, regs.P.overflow, regs.P.negative);
             break;
 
         case 0xed: // SBC $0201
@@ -1102,12 +1184,17 @@ void stepCPU(){
 
         case 0x20: // JSR $8100
             arg21 = (arg2 << 8) | arg1;
-            printf("S=%02x, JSR from %04x to %04x (%s)\n", regs.S, regs.PC, arg21, locationName(arg21));
+//            printf("S=%02x, JSR from %04x to %04x (%s)\n", regs.S, regs.PC, arg21, locationName(arg21));
             if(locationName(arg21)[0] == '?'){
                 //printf("unknown location, investigate\n");
                 //exit(1);
             }
 //if(arg21 == 0x8e19) cpuTimeDilation = 1000;
+
+            if(arg21 == 0x8e19){
+                //printf("S=%02x, JSR from %04x to %04x (%s)\n", regs.S, regs.PC, arg21, locationName(arg21));
+            }
+
             addr = regs.PC - 1;
             memory[0x0100 + regs.S] = addr >> 8;
             regs.S--;
@@ -1136,9 +1223,13 @@ void stepCPU(){
             lower = readMemory(arg21);
             upper = readMemory((arg21 + 1) & 0xffff);
             addr = (upper << 8) | lower;
-            //printf("jmp ($%04x)  mem there = %02x %02x\n", arg21, lower, upper);
+//            if(addr == 0x858b){
+            if(addr == 0x8567){
+                //printf("(%04x) JMP to %04x (%s)\n", regs.PC, addr, locationName(addr));
+                //printf("($04) ($05) = %02x %02x\n", memory[4], memory[5]);
+                //printf("ScreenRoutineTask = %02x\n", memory[0x73c]);
+            }
             regs.PC = addr;
-            //printf("new PC = %04x (%s)\n", regs.PC, locationName(regs.PC));
             break;
 
         case 0x40: // RTI
@@ -1151,7 +1242,7 @@ void stepCPU(){
             addr = (upper << 8) | lower; 
             regs.P = unpackProcessorStatus(m);
             regs.PC = addr;
-            printf("%04x rti\n\n", regs.PC);
+            //printf("%04x rti\n\n", regs.PC);
             //showCPU();
             break;
 
@@ -1328,6 +1419,27 @@ void uploadScreen(){
     UpdateTexture(screenTex, screenImg.data);
 }
 
+void DrawVar(int n, const char * name, int addr, int size, Color color){
+    char msg[256];
+
+    if(size == 1)
+        sprintf(msg, "%s = %02x", name, memory[addr]);
+    else if(size == 2)
+        sprintf(msg, "%s = %02x %02x", name, memory[addr], memory[addr+1]);
+    else
+        return;
+
+    DrawText(msg, 2, n * 12, 12, color);
+}
+
+void DrawCoinDisplay(int n){
+    char msg[16];
+    DrawText("Coin = ", 2, n * 12, 12, WHITE);
+    for(int i=0; i<28; i++){
+        sprintf(msg, "%02x", memory[0x07dd + i]);
+        DrawText(msg, 2 + 40 + i * 16, n * 12, 12, WHITE);
+    }
+}
 
 int main(){
 
@@ -1395,9 +1507,11 @@ int main(){
                     ppuStatus.spriteZeroHit = 0;
                 }
 
+                if(scanline == 30 && dot == 40){
+                    ppuStatus.spriteZeroHit = 1;
+                }
+
                 if(scanline >= 1 && scanline <= 240 && dot < 256){
-                    int row = (scanline - 1) / 8;
-                    int col = dot / 8;
 /*
                     int tileNo = col > 15 || row > 15 ? 0 : row * 16 + col;
                     int j = (scanline - 1) % 8;
@@ -1409,10 +1523,19 @@ int main(){
                     if((bitsH >> (7-i)) & 1) level |= 2;
                     if((bitsL >> (7-i)) & 1) level |= 1;
 */
-                    unsigned char level = 100 + ppuMemory[0x2000 + 32*row + col];
-                    unsigned char r = level;
-                    unsigned char g = level;
-                    unsigned char b = level;
+                    int row = (scanline - 1) / 4;
+                    int col = dot / 4;
+                    int ptr = row * 64 + col;
+                    if(ptr < 0x2000 && col < 64){
+                        unsigned char level = memory[ptr];
+                        unsigned char r = level;
+                        unsigned char g = level;
+                        unsigned char b = level;
+                        if(level < 10){ r=0; b=0; g *= 10;}
+                        if(level < 5){ r=(level+1)*25; b=0; g = 0;}
+                        if(level == 0){ r=0; b=0; g=0; }
+                        writeScreen(scanline - 1, dot, r, g, b);
+                    }
                     //ptr += 4;
                     //if(ptr > 0x1ff0) ptr = 0;
 /*
@@ -1421,7 +1544,6 @@ int main(){
                     int b = ((rand()%20) * 255) / 20;
                     int r = (rand() % 2) * 255;
 */
-                    writeScreen(scanline - 1, dot + 32, r, g, b);
                 }
 
                 cpuDots--;
@@ -1444,7 +1566,6 @@ int main(){
                         oneStep = 0;
                     }
                     else{
-//printf("0774 is %02x\n", memory[0x0774]);
                         stepCPU();
                         cpuDots = cpuTimeDilation * 3 * nextCPUDelay();
                         oneStep = 0;
@@ -1462,15 +1583,40 @@ int main(){
             ClearBackground(RAYWHITE);
             Vector2 zero = {0,0};
             DrawTextureEx(screenTex, zero, 0.0f, screenScale, WHITE);
-        char msg[256];
-        sprintf(msg, "scrollXY = (%d,%d)\n", ppuScrollX, ppuScrollY);
-            DrawText(msg, 100, 100, 12, RED);
-        sprintf(msg, "HorizontalScroll = %d\n", memory[0x073f]);
-            DrawText(msg, 100, 120, 12, WHITE);
-        sprintf(msg, "($00) = %02x %02x\n", memory[0x00], memory[0x01]);
-            DrawText(msg, 100, 140, 12, WHITE);
-        EndDrawing();
 
+/*
+            DrawVar(1, "ObjectOffset", 0x0008, 1, WHITE);
+            DrawVar(2, "FrameCounter", 0x0009, 1, WHITE);
+            DrawVar(3, "GameEngineSubroutine", 0x000e, 1, WHITE);
+            DrawVar(4, "Player_State", 0x001d, 1, WHITE);
+            DrawVar(5, "ColdBootOffset", 0x07fd, 1, WHITE);
+            DrawVar(6, "WarmBootValidation", 0x07ff, 1, WHITE);
+            DrawVar(7, "WarmBootOffset", 0x07d6, 1, WHITE);
+            DrawVar(8, "GameTimerSetting", 0x0715, 1, WHITE);
+            DrawVar(9, "DemoActionTimer", 0x0718, 1, WHITE);
+            DrawVar(10, "OperMode", 0x0770, 1, WHITE);
+            DrawVar(11, "OperMode_Task", 0x0772, 1, WHITE);
+            //DrawVar(11, "PseudoRandomBitReg", 0x07a7, 1, WHITE);
+            //DrawVar(12, "DisableScreenFlag", 0x0774, 1, WHITE);
+            DrawVar(12, "ChangeAreaTimer", 0x06de, 1, WHITE);
+            DrawVar(13, "TimerControl", 0x0747, 1, WHITE);
+            DrawVar(14, "IntervalTimerControl", 0x077f, 1, WHITE);
+            DrawVar(15, "Sprite0HitDetectFlag", 0x0722, 1, WHITE);
+            DrawVar(16, "DemoTimer", 0x07a2, 1, WHITE);
+            DrawVar(17, "GameTimerCtrlTimer", 0x0787, 1, WHITE);
+            DrawVar(18, "ScrollIntervalTimer", 0x0795, 1, WHITE);
+            DrawVar(19, "ScreenTimer", 0x07a0, 1, WHITE);
+            DrawVar(20, "WorldEndTimer", 0x07a1, 1, WHITE);
+            DrawVar(21, "GamePauseTimer", 0x0777, 1, WHITE);
+            DrawVar(22, "FetchNewGameTimerFlag", 0x0757, 1, WHITE);
+            DrawVar(23, "NumberOfLives", 0x075a, 1, WHITE);
+            DrawVar(24, "SavedJoypad1Bits", 0x06fc, 1, WHITE);
+            DrawVar(25, "SavedJoypad2Bits", 0x06fd, 1, WHITE);
+            DrawVar(26, "VRAM_Buffer_AddrCtrl", 0x0773, 1, WHITE);
+            DrawCoinDisplay(27);
+*/
+
+        EndDrawing();
 
     }
 
@@ -1478,3 +1624,4 @@ int main(){
 
     return 0;
 }
+
