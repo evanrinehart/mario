@@ -191,12 +191,21 @@ void printBits(int byte){
 
 char * locationName(int addr){
     switch(addr){
+        case 0x90cc: return "InitializeMemory";
+        case 0x802e: return "InitializeMemory call in boot script";
+        case 0x8220: return "MoveAllSpritesOffscreen";
+        case 0x8049: return "MoveAllSpritesOffscreen call in boot script";
+        case 0x8e19: return "InitializeNameTables";
+        case 0x804c: return "InitializeNameTables call in boot script";
+        case 0x8e2d: return "WriteNTAddr";
+        case 0x8e2b: return "WriteNTAddr call in InitializeNameTables";
         case 0x8ee6: return "InitScroll";
         case 0x80ae: return "InitScroll call in NMI";
         case 0x8edd: return "UpdateScreen";
         case 0x80c6: return "UpdateScreen call in NMI";
         case 0x8eed: return "WritePPUReg1";
         case 0x8eac: return "WritePPUReg1 call in WriteBufferToScreen";
+        case 0x8e26: return "WritePPUReg1 call in InitializeNametables";
         case 0xf2d0: return "SoundEngine";
         case 0x80e7: return "SoundEngine call in NMI";
         case 0x8e5c: return "ReadJoypads";
@@ -330,24 +339,34 @@ void writeMemory(int addr, unsigned char byte){
         oamAddr = (oamAddr + 1) & 0xff;
     }
     else if(addr == 0x2005){
-        printf("write %02x to $2005 (PPU scroll)\n", byte);
         if(ppuW == 0){
+            printf("write %02x to $2005 (PPU scroll X)\n", byte);
             ppuScrollX = byte;
             ppuW = !ppuW;
         }
         else if(ppuW == 1){
+            printf("write %02x to $2005 (PPU scroll Y)\n", byte);
             ppuScrollY = byte;
             ppuW = !ppuW;
         }
     }
     else if(addr == 0x2006){
-        printf("write %02x to $2006 (PPU addr)\n", byte);
-        ppuAddr = byte;
+        if(ppuW == 0){
+            ppuAddr = (int)byte << 8;
+            ppuW = !ppuW;
+            printf("write %02x to $2006 (PPU addr 0), now it's %04x\n", byte, ppuAddr);
+        }
+        else if(ppuW == 1){
+            ppuAddr |= byte;
+            ppuW = !ppuW;
+            printf("write %02x to $2006 (PPU addr 0), now it's %04x\n", byte, ppuAddr);
+        }
     }
     else if(addr == 0x2007){
         printf("write %02x to $2007 (PPU data) ppuAddr = %04x\n", byte, ppuAddr);
         if(ppuAddr < 0x2000){
-            printf("attempting to write to CHR ROM\n");
+            printf("WUT attempting to write to CHR ROM.\n");
+            exit(1);
         }
         else{
             ppuMemory[ppuAddr] = byte;
@@ -850,6 +869,10 @@ void stepCPU(){
         case 0x20: // JSR $8100
             arg21 = (arg2 << 8) | arg1;
             printf("S=%02x, JSR from %04x to %04x (%s)\n", regs.S, regs.PC, arg21, locationName(arg21));
+            if(locationName(arg21)[0] == '?'){
+                printf("unknown location, investigate\n");
+                exit(1);
+            }
             memory[0x0100 + regs.S] = regs.PC >> 8;
             regs.S--;
             memory[0x0100 + regs.S] = regs.PC & 0xff;
@@ -891,6 +914,8 @@ void stepCPU(){
             addr = (upper << 8) | lower; 
             regs.P = unpackProcessorStatus(m);
             regs.PC = addr;
+            printf("rti\n\n");
+            showCPU();
             break;
 
         default:
@@ -1090,7 +1115,6 @@ int main(){
     printf("screenImg.format  = %d\n", screenImg.format);
 
     int cpuDots = 3 * nextCPUDelay();
-    int ptr = 0;
 
     while(!WindowShouldClose()) {
 
