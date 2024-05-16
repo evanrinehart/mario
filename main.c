@@ -7,8 +7,26 @@
 
 unsigned char memory[65536];
 
-int cpuTimeDilation = 1;
-int cpuFreeze = 0;
+int timeDilation = 1;
+int timeFreeze = 0;
+
+int frameNo = 0;
+
+#define WRITELOG_SIZE 64
+int writeLog[WRITELOG_SIZE];
+int writeLogPtr = 0;
+
+void logWrite(int addr){
+    if(writeLogPtr == WRITELOG_SIZE){
+        for(int i = 0; i < WRITELOG_SIZE - 1; i++){
+            writeLog[i] = writeLog[i+1];
+        }
+        writeLog[WRITELOG_SIZE-1] = addr;
+    }
+    else{
+        writeLog[writeLogPtr++] = addr;
+    }
+}
 
 struct InterruptVectors {
     int nmi;
@@ -50,6 +68,40 @@ struct ProcessorStatus unpackProcessorStatus(unsigned char byte){
     p.zero = (byte >> 1) & 1;
     p.carry = byte & 1;
     return p;
+}
+
+struct OAMEntry {
+    unsigned char topY;
+    unsigned char tile;
+    unsigned char vflip;
+    unsigned char hflip;
+    unsigned char priority;
+    unsigned char palette;
+    unsigned char leftX;
+};
+
+struct OAMEntry unpackOAMEntry(unsigned char *bytes){
+    struct OAMEntry out;
+    out.topY     = bytes[0];
+    out.tile     = bytes[1];
+    out.vflip    = (bytes[2] >> 7) & 1;
+    out.hflip    = (bytes[2] >> 6) & 1;
+    out.priority = (bytes[2] >> 5) & 1;
+    out.palette  = bytes[2] & 0x03;
+    out.leftX    = bytes[3];
+    return out;
+}
+
+void printOAMEntry(struct OAMEntry entry){
+    printf("OAMEntry {\n");
+    printf("  leftX = %02x\n", entry.leftX);
+    printf("  topY  = %02x\n", entry.topY);
+    printf("  tile  = %02x\n", entry.tile);
+    printf("  vflip = %02x\n", entry.vflip);
+    printf("  hflip = %02x\n", entry.hflip);
+    printf("  priority = %02x\n", entry.priority);
+    printf("  palette  = %02x\n", entry.palette);
+    printf("}\n");
 }
 
 struct Registers {
@@ -132,9 +184,6 @@ struct PPUStatus {
 struct PPUCtrl ppuCtrl = {0,0,0,0,0,0,0};
 struct PPUMask ppuMask = {0,0,0,0,0,0,0,0};
 struct PPUStatus ppuStatus = {0,0,0};
-
-int nmiFlipFlop = 0;
-int performingNMI = 0;
 
 unsigned char read2002() {
     // reading PPU status register
@@ -298,11 +347,18 @@ void printInstruction(int addr){
 void debug(){
     int opcode = memory[regs.PC];
     struct Instruction * ins = instructionFromOpcode(opcode);
-    printf("PC=%04x %s(%d) A=%02x Y=%02x X=%02x S=%02x [", regs.PC, ins->mnemonic, ins->size, regs.A, regs.Y, regs.X, regs.S);
+    printf(
+        "PC=%04x %s(%d) A=%02x Y=%02x X=%02x S=%02x [",
+        regs.PC, ins->mnemonic, ins->size, regs.A, regs.Y, regs.X, regs.S
+    );
     for(int i = regs.S+1; i < 256; i++){
         printf("%02x,", memory[0x0100 + i]);
     }
-    printf("] GamePauseStatus=%02x\n", memory[0x0776]);
+    struct ProcessorStatus p = regs.P;
+    printf(
+        "] (c%d z%d i%d d%d o%d n%d))\n",
+        p.carry, p.zero, p.interruptDisable, p.decimal, p.overflow, p.negative
+    );
 }
 
 void showCPU(){
@@ -339,16 +395,15 @@ unsigned char readMemory(int addr){
         return 0;
     }
     else if(addr == 0x2002){
-        //printf("read from $%04x (PPU status)\n", addr);
+        printf("read from $%04x (PPU status)\n", addr);
         return read2002();
     }
     else if(addr == 0x2004){
-        // technically, this read only reliably works during vertical or horizontal blanking.
-        //printf("read from $2004 (OAM data)\n");
+        printf("read from $2004 (OAM data)\n");
         return oam[oamAddr];
     }
     else if(addr == 0x2007){
-        //printf("read from $2007 (PPU data)\n");
+        printf("read from $2007 (PPU data)\n");
         return 0;
     }
     else if(addr >= 0x4000 && addr <= 0x4014){
@@ -356,15 +411,15 @@ unsigned char readMemory(int addr){
         exit(1);
     }
     else if(addr == 0x4015){
-        //printf("read from $%04x (sound channels and IRQ status)\n", addr);
+        printf("read from $%04x (sound channels and IRQ status)\n", addr);
         return 0;
     }
     else if(addr == 0x4016){
-        //printf("read from $%04x (joystick 1 data)\n", addr);
+        printf("read from $%04x (joystick 1 data)\n", addr);
         return 0;
     }
     else if(addr == 0x4017){
-        //printf("read from $%04x (joystick 2 data)\n", addr);
+        printf("read from $%04x (joystick 2 data)\n", addr);
         return 0;
     }
     else if(addr >= 0x4018 && addr <= 0x401f){
@@ -376,36 +431,36 @@ unsigned char readMemory(int addr){
 
 void writeMemory(int addr, unsigned char byte){
     if(addr == 0x2000) {
-     //   printf("write %02x to %04x (PPU ctrl)\n", byte, addr);
+        printf("write %02x to %04x (PPU ctrl)\n", byte, addr);
         write2000(byte);
     }
     else if(addr == 0x2001){
-       // printf("write %02x to %04x (PPU mask)\n", byte, addr);
+        printf("write %02x to %04x (PPU mask)\n", byte, addr);
         write2001(byte);
     }
     else if(addr == 0x2003){
-        //printf("write %02x to $2003 (OAM addr)\n", byte);
+        printf("write %02x to $2003 (OAM addr)\n", byte);
     }
     else if(addr == 0x2004){
         // it's probably best to ignore writes to this register unless in blanking
-        //printf("write %02x to $2004 (OAM data)\n", byte);
+        printf("write %02x to $2004 (OAM data)\n", byte);
         oam[oamAddr] = byte;
         oamAddr = (oamAddr + 1) & 0xff;
     }
     else if(addr == 0x2005){
         if(ppuW == 0){
-            //printf("write %02x to $2005 (PPU scroll X)\n", byte);
+            printf("write %02x to $2005 (PPU scroll X)\n", byte);
             ppuScrollX = byte;
             ppuW = !ppuW;
         }
         else if(ppuW == 1){
-            //printf("write %02x to $2005 (PPU scroll Y)\n", byte);
+            printf("write %02x to $2005 (PPU scroll Y)\n", byte);
             ppuScrollY = byte;
             ppuW = !ppuW;
         }
     }
     else if(addr == 0x2006){
-        //printf("write %02x to $2006 (PPU addr)\n", byte);
+        printf("write %02x to $2006 (PPU addr)\n", byte);
         if(ppuW == 0){
             ppuAddr = (int)byte << 8;
             ppuW = !ppuW;
@@ -418,7 +473,7 @@ void writeMemory(int addr, unsigned char byte){
         }
     }
     else if(addr == 0x2007){
-        //printf("write %02x to $2007 (PPU data) (addr=%04x)\n", byte, ppuAddr);
+        printf("write %02x to $2007 (PPU data) (addr=%04x)\n", byte, ppuAddr);
         if(ppuAddr < 0x2000){
             printf("WUT attempting to write to CHR ROM.\n");
             exit(1);
@@ -429,7 +484,19 @@ void writeMemory(int addr, unsigned char byte){
         }
     }
     else if(addr == 0x4014){
-        //printf("write %02x to $4014 (OAM DMA)\n", byte);
+        printf("write %02x to $4014 (OAM DMA)\n", byte);
+        for(int i = 0; i < 256; i++){
+            oam[i] = memory[0x200 + i];
+            //printf("%02x ", memory[0x200 + i]);
+        }
+/*
+        printf("\n");
+        printOAMEntry(unpackOAMEntry(memory + 0x200 + 0));
+        printOAMEntry(unpackOAMEntry(memory + 0x200 + 4));
+        printOAMEntry(unpackOAMEntry(memory + 0x200 + 8));
+        printOAMEntry(unpackOAMEntry(memory + 0x200 + 12));
+*/
+
         // TODO
         // OAM DMA is how sprites in oam are updated
         // writing to 4014 transfers 256 from $XX00-$XXFF of cpu to OAM.
@@ -437,15 +504,15 @@ void writeMemory(int addr, unsigned char byte){
         // the data is transferred to OAM starting at the current OAM ADDR
     }
     else if(addr >= 0x4000 && addr <= 0x4015){
-        //printf("write %02x to %04x (sound chip)\n", byte, addr);
+        printf("write %02x to %04x (sound chip)\n", byte, addr);
         // TODO
         //printf("write %02x to $%04x, some sound chip control\n", byte, addr);
     }
     else if(addr == 0x4016){
-        //printf("write %02x to $4016 (joystick stobe)\n", byte);
+        printf("write %02x to $4016 (joystick stobe)\n", byte);
     }
     else if(addr == 0x4017){
-        //printf("write %02x to $4017 (apu frame counter)\n", byte);
+        printf("write %02x to $4017 (apu frame counter)\n", byte);
     }
     else if(addr >= 0x4018 && addr <= 0x401f){
         printf("write %02x to $%04x, i/o functionality that is disabled\n", byte, addr);
@@ -466,7 +533,10 @@ void writeMemory(int addr, unsigned char byte){
         printf("attempting to write out of bounds ($%04x <= $%02x)\n", addr, byte);
         exit(1);
     }
-    else memory[addr] = byte;
+    else {
+        memory[addr] = byte;
+        logWrite(addr);
+    }
 }
 
 unsigned char adc(unsigned char a, unsigned char b, int carry, struct ProcessorStatus *p){
@@ -525,11 +595,22 @@ void stepCPU(){
 
     //printf(" pc=%04x %s ", regs.PC, ins->mnemonic);
 
-    if(cpuFreeze) debug();
+    //if(regs.PC == 0xb1ba || regs.PC == 0xb1c6){
+    // this comparison leads to resetting the game if mario is too far down
+    //if(regs.PC == 0xb1aa){ printf("comparing %02x and %02x\n", regs.A, memory[7]); }
+    //if(regs.PC == 0xb1b8){ printf("store 6 in GameEngineSubroutine\n"); }
+    //if(regs.PC == 0xdc64){ printf("called PlayerBGCollision. GES = %02x\n", memory[0x0e]); }
 
-    if(regs.PC == 0x8212){
+    /*
+    if(regs.PC == 0x82c5){
+        printf("82c5 A=%02x lives=%02x\n", regs.A, memory[0x075a]);
+        //cpuFreeze = 1;
         //printf("OperExecutionTree A=%02x OperMode=%02x Task=%02x\n", regs.A, memory[0x770], memory[0x772]);
+        //printf("%d AutoControlPlayer\n", cycle);
+        //printf("%d BOOM %04x\n", cycle, regs.PC);
+        //printf("bcs ResetTitle (carry = %d)\n", regs.P.carry);
     }
+    */
 
     regs.PC += size;
 
@@ -630,6 +711,8 @@ void stepCPU(){
             break;
 
         case 0xa5: // LDA $25
+            //if(arg1 == 0xce){ printf("%04x lda reading ce\n", regs.PC - 2); }
+            //if(arg1 == 0xb5){ printf("%04x lda reading b5\n", regs.PC - 2); }
             //printf("lda $%02x\n", arg1);
             regs.A = memory[arg1];
             regs.P.zero     = regs.A == 0;
@@ -688,11 +771,13 @@ void stepCPU(){
         case 0x85: // STA $06
             //printf("sta %02x   putting %02x in addr %02x\n", arg1, regs.A, arg1);
             memory[arg1] = regs.A;
+            logWrite(arg1);
             break;
 
         case 0x95: // STA $06, X
             addr = (arg1 + regs.X) & 0xff;
             memory[addr] = regs.A;
+            logWrite(addr);
             break;
 
         case 0x8d: // STA $0205
@@ -706,7 +791,6 @@ void stepCPU(){
             addr |= memory[(arg1 + 1) & 0xff] << 8;
             addr += regs.Y;
             writeMemory(addr, regs.A);
-            memory[addr] = regs.A;
             break;
 
         case 0x99: // STA $0205, Y
@@ -725,6 +809,7 @@ void stepCPU(){
             break;
 
         case 0xa2: // LDX #$7f
+            //if(arg1 == 0xce){ printf("ldx reading ce\n"); }
             //printf("ldx %02x\n", arg1);
             regs.X = arg1;
             regs.P.zero     = regs.X == 0;
@@ -768,6 +853,7 @@ void stepCPU(){
             break;
 
         case 0xa4: // LDY $07
+            //if(arg1 == 0xce){ printf("ldy reading ce\n"); }
             regs.Y = memory[arg1];
             regs.P.zero     = regs.Y == 0;
             regs.P.negative = regs.Y > 0x7f;
@@ -782,6 +868,7 @@ void stepCPU(){
 
         case 0x86: // STX $07
             memory[arg1] = regs.X;
+            logWrite(arg1);
             break;
 
         case 0x8e: // STX $0201
@@ -791,6 +878,7 @@ void stepCPU(){
 
         case 0x84: // STY $07
             memory[arg1] = regs.Y;
+            logWrite(arg1);
             break;
 
         case 0x8c: // STY $0201
@@ -829,6 +917,7 @@ void stepCPU(){
 
         case 0x48: // PHA
             memory[0x0100 + regs.S] = regs.A;
+            logWrite(0x0100 + regs.S);
             regs.S--;
             break;
 
@@ -905,6 +994,7 @@ void stepCPU(){
             regs.P.zero = c == 0;
             regs.P.negative = (c >> 7) & 1;
             memory[arg1] = c;
+            logWrite(arg1);
             break;
 
         case 0x4e: // LSR $0201
@@ -933,6 +1023,7 @@ void stepCPU(){
             regs.P.zero = c == 0;
             regs.P.negative = (c >> 7) & 1;
             memory[arg1] = c;
+            logWrite(arg1);
             break;
 
         case 0x2e: // ROL $0201
@@ -1146,6 +1237,7 @@ void stepCPU(){
             c = m + 1;
             //printf("%02x => %02x\n", m, c);
             memory[arg1] = c;
+            logWrite(arg1);
             regs.P.zero     = c == 0;
             regs.P.negative = c > 0x7f;
             break;
@@ -1165,6 +1257,7 @@ void stepCPU(){
             m = memory[arg1];
             c = m - 1;
             memory[arg1] = c;
+            logWrite(arg1);
             regs.P.zero     = c == 0;
             regs.P.negative = c > 0x7f;
             break;
@@ -1191,14 +1284,16 @@ void stepCPU(){
             }
 //if(arg21 == 0x8e19) cpuTimeDilation = 1000;
 
-            if(arg21 == 0x8e19){
-                //printf("S=%02x, JSR from %04x to %04x (%s)\n", regs.S, regs.PC, arg21, locationName(arg21));
+            if(arg21 == 0xb0e6){
+                printf("S=%02x, JSR from %04x to %04x (%s)\n", regs.S, regs.PC, arg21, locationName(arg21));
             }
 
             addr = regs.PC - 1;
             memory[0x0100 + regs.S] = addr >> 8;
+            logWrite(0x0100 + regs.S);
             regs.S--;
             memory[0x0100 + regs.S] = addr & 0xff;
+            logWrite(0x0100 + regs.S);
             regs.S--;
             regs.PC = arg21;
             break;
@@ -1223,9 +1318,9 @@ void stepCPU(){
             lower = readMemory(arg21);
             upper = readMemory((arg21 + 1) & 0xffff);
             addr = (upper << 8) | lower;
-//            if(addr == 0x858b){
-            if(addr == 0x8567){
-                //printf("(%04x) JMP to %04x (%s)\n", regs.PC, addr, locationName(addr));
+            if(addr == 0xb0e6){
+//            if(addr == 0x8567){
+                printf("(%04x) JMP to %04x (%s)\n", regs.PC, addr, locationName(addr));
                 //printf("($04) ($05) = %02x %02x\n", memory[4], memory[5]);
                 //printf("ScreenRoutineTask = %02x\n", memory[0x73c]);
             }
@@ -1242,7 +1337,7 @@ void stepCPU(){
             addr = (upper << 8) | lower; 
             regs.P = unpackProcessorStatus(m);
             regs.PC = addr;
-            //printf("%04x rti\n\n", regs.PC);
+            printf("%04x rti\n\n", regs.PC);
             //showCPU();
             break;
 
@@ -1251,7 +1346,9 @@ void stepCPU(){
             exit(1);
     }
 
-    if(cpuFreeze) {debug(); printf("\n");}
+    if(timeFreeze || timeDilation >= 1000) debug();
+
+    //if(timeDilation > ) {debug(); printf("\n");}
 }
 
 void readRom(){
@@ -1441,6 +1538,74 @@ void DrawCoinDisplay(int n){
     }
 }
 
+int scanline = 0;
+int dot = 0;
+int nmiComing = 0;
+int nmiHappening = 0;
+int cpuDots = 1;
+int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
+
+    // process 1 dot here
+    // (Not Implemented)
+
+    dot++;
+    if(dot == 341){
+        dot = 0;
+        scanline++;
+
+        if(scanline == 241){
+            ppuStatus.inVblank = 1;
+            if(ppuCtrl.nmiOutput){ nmiComing = 1; }
+        }
+
+        if(scanline == 262){
+            scanline = 0;
+            ppuStatus.inVblank = 0;
+            ppuStatus.spriteZeroHit = 0;
+            frameNo++;
+        }
+    }
+
+    if(dot == 50 && scanline == 50){
+        ppuStatus.spriteZeroHit = 1;
+    }
+
+    cpuDots--;
+    if(cpuDots == 0){
+        if(nmiHappening){
+            nmiCPU();
+            cpuDots = 3 * nextCPUDelay();
+            nmiHappening = 0;
+            // inhibit nmi now so 1 instruction at least gets executed
+        }
+        else if(nmiComing){
+            stepCPU();
+            cpuDots = 3 * 7;
+            nmiHappening = 1;
+            nmiComing = 0;
+        }
+        else{
+            stepCPU();
+            cpuDots = 3 * nextCPUDelay();
+            // clear nmi inhibiting
+        }
+
+        return 1;
+    }
+
+    return 0;
+}
+
+
+
+void drawByte(int x, int y, unsigned char byte){
+    char msg[8];
+    sprintf(msg, "%02x", byte);
+    DrawText(msg, x*14, y*12, 10, WHITE);
+}
+
+
+
 int main(){
 
     readRom();
@@ -1466,155 +1631,116 @@ int main(){
     printf("screenImg.mipmaps = %d\n", screenImg.mipmaps);
     printf("screenImg.format  = %d\n", screenImg.format);
 
-    int oneStep = 0;
-    int cpuDots = 3 * nextCPUDelay();
-
     for(int j = 0; j < 30; j++){
         for(int i = 0; i < 32; i++){
             ppuMemory[0x2400 + j*32 + i] = rand();
         }
     }
 
+    int stepFlag = 0;
+    int skipToNMI = 0;
+    int skipToRTS = 0;
+
     while(!WindowShouldClose()) {
 
-        if(IsKeyPressed(KEY_N)){ nmiCPU(); }
-
-        // 1 frame is 262 lines, each line is 341 dots.
-        // if the next CPU instruction would take N cycles
-        // the effects must be done in N*3 dots. So after each CPU cycle
-        // reset a dot counter.
-        for(int scanline = 0; scanline < 262; scanline++){
-            for(int dot = 0; dot < 341; dot++){
-
-                // if we just started line 241, do vertical blanking dance
-                if(scanline == 241 && dot == 0){
-                    if(IsKeyPressed(KEY_ENTER)){ oneStep = 1; }
-                    if(IsKeyPressed(KEY_F)){ cpuFreeze = !cpuFreeze; }
-                    if(IsKeyPressed(KEY_Z)){ ppuStatus.spriteZeroHit = 1; }
-                    ppuStatus.inVblank = 1;
-                    // if NMI out = 1, signal NMI
-                    if(ppuCtrl.nmiOutput){
-                        nmiFlipFlop = 1;
-                    }
-                    else{
-                        //printf("NMI output disabled, no NMI\n");
-                    }
-                }
-
-                // if we just started line 0, undo vertical blanking
-                if(scanline == 0 && dot == 0){
-                    ppuStatus.inVblank = 0;
-                    ppuStatus.spriteZeroHit = 0;
-                }
-
-                if(scanline == 30 && dot == 40){
-                    ppuStatus.spriteZeroHit = 1;
-                }
-
-                if(scanline >= 1 && scanline <= 240 && dot < 256){
-/*
-                    int tileNo = col > 15 || row > 15 ? 0 : row * 16 + col;
-                    int j = (scanline - 1) % 8;
-                    int i = dot % 8;
-                    int paddr = encodePatternAddress(1, tileNo, 0, j);
-                    int bitsH = ppuMemory[paddr];
-                    paddr = encodePatternAddress(1, tileNo, 1, j);
-                    int bitsL = ppuMemory[paddr];
-                    if((bitsH >> (7-i)) & 1) level |= 2;
-                    if((bitsL >> (7-i)) & 1) level |= 1;
-*/
-                    int row = (scanline - 1) / 4;
-                    int col = dot / 4;
-                    int ptr = row * 64 + col;
-                    if(ptr < 0x2000 && col < 64){
-                        unsigned char level = memory[ptr];
-                        unsigned char r = level;
-                        unsigned char g = level;
-                        unsigned char b = level;
-                        if(level < 10){ r=0; b=0; g *= 10;}
-                        if(level < 5){ r=(level+1)*25; b=0; g = 0;}
-                        if(level == 0){ r=0; b=0; g=0; }
-                        writeScreen(scanline - 1, dot, r, g, b);
-                    }
-                    //ptr += 4;
-                    //if(ptr > 0x1ff0) ptr = 0;
-/*
-                    int r = ((rand()%20) * 255) / 20;
-                    int g = ((rand()%20) * 255) / 20;
-                    int b = ((rand()%20) * 255) / 20;
-                    int r = (rand() % 2) * 255;
-*/
-                }
-
-                cpuDots--;
-                if(cpuDots == 0){
-                    if(cpuFreeze && !oneStep && !IsKeyDown(KEY_T)){
-                        cpuDots = 1;
-                    }
-                    else if(nmiFlipFlop){
-                        stepCPU();
-                        cpuDots = 3 * 7;
-                        nmiFlipFlop = 0;
-                        performingNMI = 1;
-                        oneStep = 0;
-                    }
-                    else if(performingNMI){
-                        nmiCPU();
-                        cpuDots = 3 * nextCPUDelay();
-                        nmiFlipFlop = 0;
-                        performingNMI = 0;
-                        oneStep = 0;
-                    }
-                    else{
-                        stepCPU();
-                        cpuDots = cpuTimeDilation * 3 * nextCPUDelay();
-                        oneStep = 0;
-                    }
-
-                    //if(regs.PC == 0x8150) cpuFreeze = 1;
-
+        if(stepFlag){
+            while(stepPPU()==0);
+            stepFlag = 0;
+        }
+        else if(skipToNMI){
+            while(nmiHappening == 0) stepPPU();
+            skipToNMI = 0;
+            timeFreeze = 1;
+            timeDilation = 200000;
+        }
+        else{
+            // 1 frame is 262 lines, each line is 341 dots.
+            // if the next CPU instruction would take N cycles
+            // the effects must be done in N*3 dots. So after each CPU cycle
+            // reset a dot counter.
+            int normalSteps = 262 * 341;
+            int dotsPerFrame = normalSteps / timeDilation;
+            if(dotsPerFrame < 1) dotsPerFrame = 1;
+            if(!skipToRTS && timeFreeze) dotsPerFrame = 0;
+            for(int i = 0; i < dotsPerFrame; i++){
+                stepPPU();
+                if(regs.PC == 0x8014){ timeFreeze = 1; break; }
+                //if(regs.PC == 0x8082){ timeFreeze = 1; break; }
+                //if(regs.PC == 0x8227){ timeFreeze = 1; break; }
+                if(skipToRTS && memory[regs.PC] == 0x60){
+                    skipToRTS = 0;
+                    timeFreeze = 1;
+                    timeDilation = 200000;
+                    break;
                 }
             }
         }
 
+        if(IsKeyPressed(KEY_FOUR)){ timeDilation = 1; }
+        if(IsKeyPressed(KEY_THREE)){ timeDilation = 1000; }
+        if(IsKeyPressed(KEY_TWO)){ timeDilation = 5000; }
+        if(IsKeyPressed(KEY_ONE)){ timeDilation = 200000; }
+        if(IsKeyPressed(KEY_N)){ skipToNMI = 1; }
+        if(IsKeyPressed(KEY_R)){ skipToRTS = 1; timeDilation = 1; }
+        if(IsKeyPressed(KEY_F)){ timeFreeze = !timeFreeze; }
+        if(timeFreeze && IsKeyPressed(KEY_ENTER)){ stepFlag = 1; }
+
+
         uploadScreen();
 
         BeginDrawing();
-            ClearBackground(RAYWHITE);
+            ClearBackground(BLUE);
             Vector2 zero = {0,0};
-            DrawTextureEx(screenTex, zero, 0.0f, screenScale, WHITE);
+            //DrawTextureEx(screenTex, zero, 0.0f, screenScale, WHITE);
 
-/*
-            DrawVar(1, "ObjectOffset", 0x0008, 1, WHITE);
-            DrawVar(2, "FrameCounter", 0x0009, 1, WHITE);
-            DrawVar(3, "GameEngineSubroutine", 0x000e, 1, WHITE);
-            DrawVar(4, "Player_State", 0x001d, 1, WHITE);
-            DrawVar(5, "ColdBootOffset", 0x07fd, 1, WHITE);
-            DrawVar(6, "WarmBootValidation", 0x07ff, 1, WHITE);
-            DrawVar(7, "WarmBootOffset", 0x07d6, 1, WHITE);
-            DrawVar(8, "GameTimerSetting", 0x0715, 1, WHITE);
-            DrawVar(9, "DemoActionTimer", 0x0718, 1, WHITE);
-            DrawVar(10, "OperMode", 0x0770, 1, WHITE);
-            DrawVar(11, "OperMode_Task", 0x0772, 1, WHITE);
-            //DrawVar(11, "PseudoRandomBitReg", 0x07a7, 1, WHITE);
-            //DrawVar(12, "DisableScreenFlag", 0x0774, 1, WHITE);
-            DrawVar(12, "ChangeAreaTimer", 0x06de, 1, WHITE);
-            DrawVar(13, "TimerControl", 0x0747, 1, WHITE);
-            DrawVar(14, "IntervalTimerControl", 0x077f, 1, WHITE);
-            DrawVar(15, "Sprite0HitDetectFlag", 0x0722, 1, WHITE);
-            DrawVar(16, "DemoTimer", 0x07a2, 1, WHITE);
-            DrawVar(17, "GameTimerCtrlTimer", 0x0787, 1, WHITE);
-            DrawVar(18, "ScrollIntervalTimer", 0x0795, 1, WHITE);
-            DrawVar(19, "ScreenTimer", 0x07a0, 1, WHITE);
-            DrawVar(20, "WorldEndTimer", 0x07a1, 1, WHITE);
-            DrawVar(21, "GamePauseTimer", 0x0777, 1, WHITE);
-            DrawVar(22, "FetchNewGameTimerFlag", 0x0757, 1, WHITE);
-            DrawVar(23, "NumberOfLives", 0x075a, 1, WHITE);
-            DrawVar(24, "SavedJoypad1Bits", 0x06fc, 1, WHITE);
-            DrawVar(25, "SavedJoypad2Bits", 0x06fd, 1, WHITE);
-            DrawVar(26, "VRAM_Buffer_AddrCtrl", 0x0773, 1, WHITE);
-            DrawCoinDisplay(27);
-*/
+        int div = 0;
+        for(int i = writeLogPtr-1; i >= 0; i--){
+            int addr = writeLog[i];
+            int x = (addr % 64) + 1;
+            int y = addr / 64;
+            Color c = {0, 0, 0, 255};
+            c.r = 128 + (127 * (WRITELOG_SIZE - div) / WRITELOG_SIZE);
+            div++;
+            if(addr < 0xc00){
+                DrawRectangle(14*x-1, 12*y-1, 14-1, 12-1, c);
+                if(i==writeLogPtr-1){
+                    DrawRing((Vector2){14*x+6,12*y+5}, 20, 24, 0, 360, 24, GREEN);
+                }
+            }
+            else{
+                printf("can't write some of the log\n");
+            }
+        }
+
+        for(int j = 0; j < 48; j++){
+            if(j%4 == 0) drawByte(0, j, j/4);
+            for(int i = 0; i < 64; i++){
+                int level = memory[j*64 + i];
+                int r = level;
+                int g = level;
+                int b = level;
+                //writeScreen(j,i,r,g,b);
+                drawByte(i+1, j, level);
+            }
+        }
+
+
+        //drawByte(320*3/16 - 1, 240*3/16 - 1, 0);
+        for(int i = 0xff; i > regs.S; i--){
+            drawByte(320*3/14 - 1, 240*3/12 - 1 - (0xff - i), memory[0x0100 + i]);
+        }
+
+        DrawText("1 = turtle slow", 2, 240*3 - 12*6, 10, WHITE);
+        DrawText("2 = turtle slow+", 2, 240*3 - 12*5, 10, WHITE);
+        DrawText("3 = fast", 2, 240*3 - 12*4, 10, WHITE);
+        DrawText("4 = blazing", 2, 240*3 - 12*3, 10, WHITE);
+
+        DrawText("F: freeze/unfreeze", 100, 240*3 - 12*6, 10, WHITE);
+        DrawText("Enter: exec 1 instruction", 100, 240*3 - 12*5, 10, WHITE);
+        DrawText("R: skip to RTS and freeze", 100, 240*3 - 12*4, 10, WHITE);
+        DrawText("N: skip to NMI and freeze", 100, 240*3 - 12*3, 10, WHITE);
+
+        DrawText(TextFormat("frameNo = %d",frameNo), 2, 240*3 - 16, 10, WHITE);
 
         EndDrawing();
 
