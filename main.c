@@ -1676,7 +1676,8 @@ int main(){
             }
         }
 
-        if(IsKeyPressed(KEY_FOUR)){ timeDilation = 1; }
+        if(IsKeyPressed(KEY_FIVE)){ timeDilation = 1; }
+        if(IsKeyPressed(KEY_FOUR)){ timeDilation = 10; }
         if(IsKeyPressed(KEY_THREE)){ timeDilation = 1000; }
         if(IsKeyPressed(KEY_TWO)){ timeDilation = 5000; }
         if(IsKeyPressed(KEY_ONE)){ timeDilation = 200000; }
@@ -1730,10 +1731,11 @@ int main(){
             drawByte(320*3/14 - 1, 240*3/12 - 1 - (0xff - i), memory[0x0100 + i]);
         }
 
-        DrawText("1 = turtle slow", 2, 240*3 - 12*6, 10, WHITE);
-        DrawText("2 = turtle slow+", 2, 240*3 - 12*5, 10, WHITE);
-        DrawText("3 = fast", 2, 240*3 - 12*4, 10, WHITE);
-        DrawText("4 = blazing", 2, 240*3 - 12*3, 10, WHITE);
+        DrawText("1 = turtle slow", 2, 240*3 - 12*7, 10, WHITE);
+        DrawText("2 = turtle slow+", 2, 240*3 - 12*6, 10, WHITE);
+        DrawText("3 = fast", 2, 240*3 - 12*5, 10, WHITE);
+        DrawText("4 = blazing", 2, 240*3 - 12*4, 10, WHITE);
+        DrawText("5 = ludicrous", 2, 240*3 - 12*3, 10, WHITE);
 
         DrawText("F: freeze/unfreeze", 100, 240*3 - 12*6, 10, WHITE);
         DrawText("Enter: exec 1 instruction", 100, 240*3 - 12*5, 10, WHITE);
