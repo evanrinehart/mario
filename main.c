@@ -644,14 +644,16 @@ void stepCPU(){
         case 0xc9: // CMP #$43
             regs.P.carry     = regs.A >= arg1;
             regs.P.zero      = regs.A == arg1;
-            regs.P.negative  = (regs.A - arg1) >> 7;
+            c = regs.A - arg1;
+            regs.P.negative  = c >> 7;
             break;
 
         case 0xc5: // CMP $03
             m = memory[arg1];
             regs.P.carry     = regs.A >= m;
             regs.P.zero      = regs.A == m;
-            regs.P.negative  = (regs.A - m) >> 7;
+            c = regs.A - m;
+            regs.P.negative  = c >> 7;
             break;
 
         case 0xd5: // CMP $03, X
@@ -659,7 +661,8 @@ void stepCPU(){
             m = memory[addr];
             regs.P.carry     = regs.A >= m;
             regs.P.zero      = regs.A == m;
-            regs.P.negative  = (regs.A - m) >> 7;
+            c = regs.A - m;
+            regs.P.negative  = c >> 7;
             break;
 
         case 0xcd: // CMP $0201
@@ -667,7 +670,8 @@ void stepCPU(){
             m = readMemory(addr);
             regs.P.carry     = regs.A >= m;
             regs.P.zero      = regs.A == m;
-            regs.P.negative  = (regs.A - m) >> 7;
+            c = regs.A - m;
+            regs.P.negative  = c >> 7;
             break;
 
         case 0xdd: // CMP $0201, X
@@ -676,7 +680,8 @@ void stepCPU(){
             m = readMemory(addr);
             regs.P.carry     = regs.A >= m;
             regs.P.zero      = regs.A == m;
-            regs.P.negative  = (regs.A - m) >> 7;
+            c = regs.A - m;
+            regs.P.negative  = c >> 7;
             break;
 
         case 0xd9: // CMP $0201, Y
@@ -685,20 +690,23 @@ void stepCPU(){
             m = readMemory(addr);
             regs.P.carry     = regs.A >= m;
             regs.P.zero      = regs.A == m;
-            regs.P.negative  = (regs.A - m) >> 7;
+            c = regs.A - m;
+            regs.P.negative  = c >> 7;
             break;
 
 
         case 0xe0: // CPX #$07
             regs.P.carry     = regs.X >= arg1;
             regs.P.zero      = regs.X == arg1;
-            regs.P.negative  = (regs.X - arg1) >> 7;
+            c = regs.X - arg1;
+            regs.P.negative  = c >> 7;
             break;
 
         case 0xc0: // CPY #$07
             regs.P.carry     = regs.Y >= arg1;
             regs.P.zero      = regs.Y == arg1;
-            regs.P.negative  = (regs.Y - arg1) >> 7;
+            c = regs.Y - arg1;
+            regs.P.negative  = c >> 7;
             break;
             
         case 0xa9: // LDA #$7f
@@ -830,6 +838,13 @@ void stepCPU(){
             regs.P.negative = regs.Y >> 7;
             break;
 
+        case 0xb4: // LDY $07, X
+            addr = (arg1 + regs.X) & 0xff;
+            regs.Y = memory[addr];
+            regs.P.zero     = regs.Y == 0;
+            regs.P.negative = regs.Y >> 7;
+            break;
+
         case 0xac: // LDY $0203
             addr = (arg2 << 8) | arg1;
             regs.Y = readMemory(addr);
@@ -858,6 +873,12 @@ void stepCPU(){
         case 0x84: // STY $07
             memory[arg1] = regs.Y;
             logWrite(arg1);
+            break;
+
+        case 0x94: // STY $07, X
+            addr = (arg1 + regs.X) & 0xff;
+            memory[addr] = regs.Y;
+            logWrite(addr);
             break;
 
         case 0x8c: // STY $0201
@@ -1040,8 +1061,33 @@ void stepCPU(){
             regs.P.negative = regs.A >> 7;
             break;
 
+        case 0x15: // ORA $1f, X
+            addr = (arg1 + regs.X) & 0xff;
+            regs.A = regs.A | memory[addr];
+            regs.P.zero     = regs.A == 0;
+            regs.P.negative = regs.A >> 7;
+            break;
+
         case 0x0d: // ORA $0203
             addr = (arg2 << 8) | arg1;
+            m = readMemory(addr);
+            regs.A = regs.A | m;
+            regs.P.zero     = regs.A == 0;
+            regs.P.negative = regs.A >> 7;
+            break;
+
+        case 0x1d: // ORA $0203, X
+            arg21 = (arg2 << 8) | arg1;
+            addr = (arg21 + regs.X) & 0xffff;
+            m = readMemory(addr);
+            regs.A = regs.A | m;
+            regs.P.zero     = regs.A == 0;
+            regs.P.negative = regs.A >> 7;
+            break;
+
+        case 0x19: // ORA $0203, Y
+            arg21 = (arg2 << 8) | arg1;
+            addr = (arg21 + regs.Y) & 0xffff;
             m = readMemory(addr);
             regs.A = regs.A | m;
             regs.P.zero     = regs.A == 0;
@@ -1191,20 +1237,32 @@ void stepCPU(){
             regs.P.negative = regs.Y >> 7;
             break;
 
-        case 0xee: // INC $0203   increment memory
-            addr = (arg2 << 8) | arg1;
-            m = readMemory(addr);
-            writeMemory(addr, m + 1);
-            regs.P.zero     = (m + 1) == 0;
-            regs.P.negative = (m + 1) >> 7;
-            break;
-
         case 0xe6: // INC $11
             m = memory[arg1];
             memory[arg1] = m + 1;
             logWrite(arg1);
             regs.P.zero     = (m + 1) == 0;
-            regs.P.negative = (m + 1) >> 7;
+            c = m + 1;
+            regs.P.negative = c >> 7;
+            break;
+
+        case 0xf6: // INC $11, X
+            addr = (arg1 + regs.X) & 0xff;
+            m = memory[addr];
+            memory[addr] = m + 1;
+            logWrite(addr);
+            regs.P.zero     = (m + 1) == 0;
+            c = m + 1;
+            regs.P.negative = c >> 7;
+            break;
+
+        case 0xee: // INC $0203   increment memory
+            addr = (arg2 << 8) | arg1;
+            m = readMemory(addr);
+            writeMemory(addr, m + 1);
+            regs.P.zero     = (m + 1) == 0;
+            c = m + 1;
+            regs.P.negative = c >> 7;
             break;
 
         case 0xce: // DEC $0203
@@ -1212,7 +1270,8 @@ void stepCPU(){
             m = readMemory(addr);
             writeMemory(addr, m - 1);
             regs.P.zero     = (m - 1) == 0;
-            regs.P.negative = (m - 1) >> 7;
+            c = m - 1;
+            regs.P.negative = c >> 7;
             break;
 
         case 0xc6: // DEC $03
@@ -1220,7 +1279,18 @@ void stepCPU(){
             memory[arg1] = m - 1;
             logWrite(arg1);
             regs.P.zero     = (m - 1) == 0;
-            regs.P.negative = (m - 1) >> 7;
+            c = m - 1;
+            regs.P.negative = c >> 7;
+            break;
+
+        case 0xd6: // DEC $11, X
+            addr = (arg1 + regs.X) & 0xff;
+            m = memory[addr];
+            memory[addr] = m - 1;
+            logWrite(addr);
+            regs.P.zero     = (m - 1) == 0;
+            c = m - 1;
+            regs.P.negative = c >> 7;
             break;
 
         case 0xde: // DEC $0203, X
@@ -1229,7 +1299,8 @@ void stepCPU(){
             m = readMemory(addr);
             writeMemory(addr, m - 1);
             regs.P.zero     = (m - 1) == 0;
-            regs.P.negative = (m - 1) >> 7;
+            c = m - 1;
+            regs.P.negative = c >> 7;
             break;
 
         case 0xe8: // INX
@@ -1628,7 +1699,7 @@ int main(){
             // if the next CPU instruction would take N cycles
             // the effects must be done in N*3 dots. So after each CPU cycle
             // reset a dot counter.
-            int normalSteps = 262 * 341;
+            int normalSteps = 2 * 262 * 341;
             int dotsPerFrame = normalSteps / timeDilation;
             if(dotsPerFrame < 1) dotsPerFrame = 1;
             if(!skipToRTS && timeFreeze) dotsPerFrame = 0;
@@ -1750,7 +1821,6 @@ int main(){
             int y = oam[s*4 + 0];
             DrawRing((Vector2){100 + 8 + 3*x/2, 200 + 8 + 3*y/2}, 6, 8, 0, 360, 24, GOLD);
         }
-
 
         }
 
