@@ -1816,7 +1816,7 @@ int main(){
 
         DrawRectangleLines(100 + 3*ppuScrollX/2, 200, 32*12, 32*12, GREEN);
 
-        for(int s = 0; s <= 8; s++){
+        for(int s = 0; s <= 15; s++){
             int x = oam[s*4 + 3];
             int y = oam[s*4 + 0];
             DrawRing((Vector2){100 + 8 + 3*x/2, 200 + 8 + 3*y/2}, 6, 8, 0, 360, 24, GOLD);
