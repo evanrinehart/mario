@@ -460,10 +460,6 @@ void writeMemory(int addr, unsigned char byte){
         oamAddr = (oamAddr + 1) & 0xff;
     }
     else if(addr == 0x2005){
-        if(byte != 0){
-            printf("something finally wrote not zero to PPUSCROLL (2005)\n");
-            exit(1);
-        }
         if(ppuW == 0){
             //printf("write %02x to $2005 (PPU scroll X)\n", byte);
             ppuScrollX = byte;
@@ -648,14 +644,14 @@ void stepCPU(){
         case 0xc9: // CMP #$43
             regs.P.carry     = regs.A >= arg1;
             regs.P.zero      = regs.A == arg1;
-            regs.P.negative  = regs.A < arg1;
+            regs.P.negative  = (regs.A - arg1) >> 7;
             break;
 
         case 0xc5: // CMP $03
             m = memory[arg1];
             regs.P.carry     = regs.A >= m;
             regs.P.zero      = regs.A == m;
-            regs.P.negative  = regs.A < m;
+            regs.P.negative  = (regs.A - m) >> 7;
             break;
 
         case 0xd5: // CMP $03, X
@@ -663,7 +659,7 @@ void stepCPU(){
             m = memory[addr];
             regs.P.carry     = regs.A >= m;
             regs.P.zero      = regs.A == m;
-            regs.P.negative  = regs.A < m;
+            regs.P.negative  = (regs.A - m) >> 7;
             break;
 
         case 0xcd: // CMP $0201
@@ -671,7 +667,7 @@ void stepCPU(){
             m = readMemory(addr);
             regs.P.carry     = regs.A >= m;
             regs.P.zero      = regs.A == m;
-            regs.P.negative  = regs.A < m;
+            regs.P.negative  = (regs.A - m) >> 7;
             break;
 
         case 0xdd: // CMP $0201, X
@@ -680,7 +676,7 @@ void stepCPU(){
             m = readMemory(addr);
             regs.P.carry     = regs.A >= m;
             regs.P.zero      = regs.A == m;
-            regs.P.negative  = regs.A < m;
+            regs.P.negative  = (regs.A - m) >> 7;
             break;
 
         case 0xd9: // CMP $0201, Y
@@ -689,46 +685,46 @@ void stepCPU(){
             m = readMemory(addr);
             regs.P.carry     = regs.A >= m;
             regs.P.zero      = regs.A == m;
-            regs.P.negative  = regs.A < m;
+            regs.P.negative  = (regs.A - m) >> 7;
             break;
 
 
         case 0xe0: // CPX #$07
             regs.P.carry     = regs.X >= arg1;
             regs.P.zero      = regs.X == arg1;
-            regs.P.negative  = regs.X < arg1;
+            regs.P.negative  = (regs.X - arg1) >> 7;
             break;
 
         case 0xc0: // CPY #$07
             regs.P.carry     = regs.Y >= arg1;
             regs.P.zero      = regs.Y == arg1;
-            regs.P.negative  = regs.Y < arg1;
+            regs.P.negative  = (regs.Y - arg1) >> 7;
             break;
             
         case 0xa9: // LDA #$7f
             regs.A = arg1;
             regs.P.zero     = regs.A == 0;
-            regs.P.negative = regs.A > 0x7f;
+            regs.P.negative = regs.A >> 7;
             break;
 
         case 0xa5: // LDA $25
             regs.A = memory[arg1];
             regs.P.zero     = regs.A == 0;
-            regs.P.negative = regs.A > 0x7f;
+            regs.P.negative = regs.A >> 7;
             break;
 
         case 0xad: // LDA $0205
             addr = (arg2 << 8) | arg1;
             regs.A = readMemory(addr);
             regs.P.zero     = regs.A == 0;
-            regs.P.negative = regs.A > 0x7f;
+            regs.P.negative = regs.A >> 7;
             break;
 
         case 0xb5: // LDA $23, X
             addr = (arg1 + regs.X) & 0xff;
             regs.A = memory[addr];
             regs.P.zero     = regs.A == 0;
-            regs.P.negative = regs.A > 0x7f;
+            regs.P.negative = regs.A >> 7;
             break;
 
         case 0xbd: // LDA $0205, X
@@ -736,7 +732,7 @@ void stepCPU(){
             addr = (arg21 + regs.X) & 0xffff;
             regs.A = readMemory(addr);
             regs.P.zero     = regs.A == 0;
-            regs.P.negative = regs.A > 0x7f;
+            regs.P.negative = regs.A >> 7;
             break;
 
         case 0xb1: // LDA ($00), Y
@@ -747,7 +743,7 @@ void stepCPU(){
             addr &= 0xffff;
             regs.A = readMemory(addr);
             regs.P.zero     = regs.A == 0;
-            regs.P.negative = regs.A > 0x7f;
+            regs.P.negative = regs.A >> 7;
             break;
 
         case 0xb9: // LDA $0233, Y
@@ -755,7 +751,7 @@ void stepCPU(){
             addr = (arg21 + regs.Y) & 0xffff;
             regs.A = readMemory(addr);
             regs.P.zero     = regs.A == 0;
-            regs.P.negative = regs.A > 0x7f;
+            regs.P.negative = regs.A >> 7;
             break;
 
         case 0x85: // STA $06
@@ -798,20 +794,20 @@ void stepCPU(){
         case 0xa2: // LDX #$7f
             regs.X = arg1;
             regs.P.zero     = regs.X == 0;
-            regs.P.negative = regs.X > 0x7f;
+            regs.P.negative = regs.X >> 7;
             break;
 
         case 0xa6: // LDX $07
             regs.X = memory[arg1];
             regs.P.zero     = regs.X == 0;
-            regs.P.negative = regs.X > 0x7f;
+            regs.P.negative = regs.X >> 7;
             break;
 
         case 0xae: // LDX $0203
             addr = (arg2 << 8) | arg1;
             regs.X = readMemory(addr);
             regs.P.zero     = regs.X == 0;
-            regs.P.negative = regs.X > 0x7f;
+            regs.P.negative = regs.X >> 7;
             break;
 
         case 0xbe: // LDX $0203, Y
@@ -819,26 +815,26 @@ void stepCPU(){
             addr = (arg21 + regs.Y) & 0xffff;
             regs.X = readMemory(addr);
             regs.P.zero     = regs.X == 0;
-            regs.P.negative = regs.X > 0x7f;
+            regs.P.negative = regs.X >> 7;
             break;
 
         case 0xa0: // LDY #$7f
             regs.Y = arg1;
             regs.P.zero     = regs.Y == 0;
-            regs.P.negative = regs.Y > 0x7f;
+            regs.P.negative = regs.Y >> 7;
             break;
 
         case 0xa4: // LDY $07
             regs.Y = memory[arg1];
             regs.P.zero     = regs.Y == 0;
-            regs.P.negative = regs.Y > 0x7f;
+            regs.P.negative = regs.Y >> 7;
             break;
 
         case 0xac: // LDY $0203
             addr = (arg2 << 8) | arg1;
             regs.Y = readMemory(addr);
             regs.P.zero     = regs.Y == 0;
-            regs.P.negative = regs.Y > 0x7f;
+            regs.P.negative = regs.Y >> 7;
             break;
 
         case 0xbc: // LDY $0203, X
@@ -846,7 +842,7 @@ void stepCPU(){
             addr = (arg21 + regs.X) & 0xffff;
             regs.Y = readMemory(addr);
             regs.P.zero     = regs.Y == 0;
-            regs.P.negative = regs.Y > 0x7f;
+            regs.P.negative = regs.Y >> 7;
             break;
 
         case 0x86: // STX $07
@@ -876,25 +872,25 @@ void stepCPU(){
         case 0x8a: // TXA
             regs.A = regs.X;
             regs.P.zero     = regs.A == 0;
-            regs.P.negative = regs.A > 0x7f;
+            regs.P.negative = regs.A >> 7;
             break;
 
         case 0x98: // TYA
             regs.A = regs.Y;
             regs.P.zero     = regs.A == 0;
-            regs.P.negative = regs.A > 0x7f;
+            regs.P.negative = regs.A >> 7;
             break;
 
         case 0xaa: // TAX
             regs.X = regs.A;
             regs.P.zero     = regs.X == 0;
-            regs.P.negative = regs.X > 0x7f;
+            regs.P.negative = regs.X >> 7;
             break;
 
         case 0xa8: // TAY
             regs.Y = regs.A;
             regs.P.zero     = regs.Y == 0;
-            regs.P.negative = regs.Y > 0x7f;
+            regs.P.negative = regs.Y >> 7;
             break;
 
         case 0x48: // PHA
@@ -907,7 +903,7 @@ void stepCPU(){
             regs.S++;
             regs.A = memory[0x0100 + regs.S];
             regs.P.zero     = regs.A == 0;
-            regs.P.negative = regs.A > 0x7f;
+            regs.P.negative = regs.A >> 7;
             break;
 
         case 0x10: // BPL #7 branch if positive (i.e. not negative)
@@ -938,7 +934,7 @@ void stepCPU(){
             regs.P.carry = regs.A >> 7;
             regs.A = regs.A << 1;
             regs.P.zero     = regs.A == 0;
-            regs.P.negative = regs.A > 0x7f;
+            regs.P.negative = regs.A >> 7;
             break;
 
         case 0x0e: // ASL, $0201
@@ -1639,7 +1635,7 @@ int main(){
             for(int i = 0; i < dotsPerFrame; i++){
                 stepPPU();
                 if(regs.PC == 0x8014){ timeFreeze = 1; break; }
-                //if(regs.PC == 0xaf93){ timeFreeze = 1; break; }
+                //if(regs.PC == 0xf180){ timeFreeze = 1; break; }
                 //if(regs.PC == 0xefbe){ timeFreeze = 1; break; }
                 //if(regs.PC == 0x8e92){ timeFreeze = 1; break; }
                 //if(regs.PC == 0x93fc){ timeFreeze = 1; break; }
@@ -1694,7 +1690,9 @@ int main(){
         //07a2, y = 07a2 / 256, x = 07a2 % 256
         //int track = 0x0045;//player moving direction, check
         //int track = 0x1d; // player state
-        int track = 0x86; // player X position
+        //int track = 0x86; // player X position
+        //int track = 0x06a1; // metatilebuffer (11 cells)
+        int track = 0x03d0; // player offscreen bits
         DrawRing((Vector2){14*(track%64 + 1)+6,12*(track/64)+5}, 20, 24, 0, 360, 24, PURPLE);
 
         for(int j = 0; j < 48; j++){
@@ -1745,12 +1743,12 @@ int main(){
             DrawRectangle(500 + 12*(i%32), 200 + 12*(i/32), 12, 12, c);
         }
 
-        DrawRectangleLines(100 + 12*ppuScrollX, 200, 32*12, 32*12, GREEN);
+        DrawRectangleLines(100 + 3*ppuScrollX/2, 200, 32*12, 32*12, GREEN);
 
         for(int s = 0; s <= 8; s++){
             int x = oam[s*4 + 3];
             int y = oam[s*4 + 0];
-            DrawRing((Vector2){100 + 8 + x, 200 + 8 + y}, 6, 8, 0, 360, 24, GOLD);
+            DrawRing((Vector2){100 + 8 + 3*x/2, 200 + 8 + 3*y/2}, 6, 8, 0, 360, 24, GOLD);
         }
 
 
