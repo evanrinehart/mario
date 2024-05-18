@@ -169,7 +169,7 @@ int ppuW = 0; // write toggle
 int ppuScrollX = 0;
 int ppuScrollY = 0;
 int ppuNameBase = 0x2000;
-int ppuDataReadBuffer = 0;
+unsigned char ppuDataReadBuffer = 0;
 
 struct PPUCtrl {
     int nametableBase;
@@ -202,6 +202,45 @@ unsigned char ppuCtrlByte;
 struct PPUCtrl ppuCtrl = {0,0,0,0,0,0,0};
 struct PPUMask ppuMask = {0,0,0,0,0,0,0,0};
 struct PPUStatus ppuStatus = {0,0,0};
+
+
+
+int gamepadA = 0;
+int gamepadB = 0;
+int gamepadSelect = 0;
+int gamepadStart = 0;
+int gamepadUp = 0;
+int gamepadDown = 0;
+int gamepadLeft = 0;
+int gamepadRight = 0;
+unsigned char gamepadShiftRegister = 0;
+void pollGamepad(){
+    gamepadA = IsKeyDown(KEY_K);
+    gamepadB = IsKeyDown(KEY_J);
+    gamepadSelect = IsKeyDown(KEY_Q);
+    gamepadStart = IsKeyDown(KEY_E);
+    gamepadUp = IsKeyDown(KEY_W);
+    gamepadDown = IsKeyDown(KEY_S);
+    gamepadLeft = IsKeyDown(KEY_A);
+    gamepadRight = IsKeyDown(KEY_D);
+}
+
+unsigned char packGamepad(){
+    unsigned char byte;
+    byte = 0;
+    byte |= gamepadRight; byte <<= 1;
+    byte |= gamepadLeft; byte <<= 1;
+    byte |= gamepadDown; byte <<= 1;
+    byte |= gamepadUp; byte <<= 1;
+    byte |= gamepadStart; byte <<= 1;
+    byte |= gamepadSelect; byte <<= 1;
+    byte |= gamepadB; byte <<= 1;
+    byte |= gamepadA;
+    return byte;
+}
+
+
+
 
 unsigned char read2002() {
     // reading PPU status register
@@ -452,8 +491,10 @@ unsigned char readMemory(int addr){
         return 0;
     }
     else if(addr == 0x4016){
+        byte = gamepadShiftRegister & 1;
+        gamepadShiftRegister >>= 1;
         //printf("read from $%04x (joystick 1 data)\n", addr);
-        return 0;
+        return byte;
     }
     else if(addr == 0x4017){
         //printf("read from $%04x (joystick 2 data)\n", addr);
@@ -553,7 +594,9 @@ void writeMemory(int addr, unsigned char byte){
         // TODO
     }
     else if(addr == 0x4016){
-        //printf("write %02x to $4016 (joystick stobe)\n", byte);
+        //printf("write %02x to $4016 (joystick strobe)\n", byte);
+        //printf("shift register loaded with %02x\n", gamepadShiftRegister);
+        gamepadShiftRegister = packGamepad();
     }
     else if(addr == 0x4017){
         //printf("write %02x to $4017 (apu frame counter)\n", byte);
@@ -741,6 +784,23 @@ void stepCPU(){
             regs.P.carry     = regs.Y >= arg1;
             regs.P.zero      = regs.Y == arg1;
             c = regs.Y - arg1;
+            regs.P.negative  = c >> 7;
+            break;
+
+        case 0xc4: // CPY $07
+            m = memory[arg1];
+            regs.P.carry     = regs.Y >= m;
+            regs.P.zero      = regs.Y == m;
+            c = regs.Y - m;
+            regs.P.negative  = c >> 7;
+            break;
+
+        case 0xcc: // CPY $0201
+            addr = (arg2 << 8) | arg1;
+            m = readMemory(addr);
+            regs.P.carry     = regs.Y >= m;
+            regs.P.zero      = regs.Y == m;
+            c = regs.Y - m;
             regs.P.negative  = c >> 7;
             break;
             
@@ -1300,6 +1360,16 @@ void stepCPU(){
             regs.P.negative = c >> 7;
             break;
 
+        case 0xfe: // INC $0203, X
+            arg21 = (arg2 << 8) | arg1;
+            addr = (arg21 + regs.X) & 0xffff;
+            m = readMemory(addr);
+            writeMemory(addr, m + 1);
+            regs.P.zero     = (m + 1) == 0;
+            c = m + 1;
+            regs.P.negative = c >> 7;
+            break;
+
         case 0xce: // DEC $0203
             addr = (arg2 << 8) | arg1;
             m = readMemory(addr);
@@ -1641,7 +1711,7 @@ int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
         }
     }
 
-    if(dot == 0xf8 && scanline == 240){
+    if(dot == oam[3] && scanline == oam[0] && /* sprite0 and bg not transparent */ 1){
         ppuStatus.spriteZeroHit = 1;
     }
 
@@ -1719,6 +1789,8 @@ int main(){
 
     while(!WindowShouldClose()) {
 
+        pollGamepad();
+
         if(stepFlag){
             while(stepPPU()==0);
             stepFlag = 0;
@@ -1734,7 +1806,7 @@ int main(){
             // if the next CPU instruction would take N cycles
             // the effects must be done in N*3 dots. So after each CPU cycle
             // reset a dot counter.
-            int normalSteps = 2 * 262 * 341;
+            int normalSteps = 1 * 262 * 341;
             int dotsPerFrame = normalSteps / timeDilation;
             if(dotsPerFrame < 1) dotsPerFrame = 1;
             if(!skipToRTS && timeFreeze) dotsPerFrame = 0;
@@ -1806,9 +1878,6 @@ int main(){
             for(int i = 0; i < 64; i++){
                 int level = memory[j*64 + i];
                 //int level = ppuMemory[0x2000 + j*64 + i];
-                int r = level;
-                int g = level;
-                int b = level;
                 //writeScreen(j,i,r,g,b);
                 drawByte(i+1, j, level);
             }
