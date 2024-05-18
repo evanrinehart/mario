@@ -1691,7 +1691,14 @@ int cpuDots = 1;
 int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
 
     // process 1 dot here
-    // (Not Implemented)
+    if(dot < 256 && scanline >= 1 && scanline <= 240){
+        //int ptr = (scanline - 1) * 256 + dot;
+        //int level = ppuMemory[0x2000 + (ptr % 0x4000)];
+        int r = scanline - 1;
+        int g = dot;
+        int b = rand();
+        writeScreen(scanline-1,dot,r/3,g/3,b);
+    }
 
     dot++;
     if(dot == 341){
@@ -1786,6 +1793,7 @@ int main(){
     int skipToNMI = 0;
     int skipToRTS = 0;
     int showNametables = 1;
+    int showVisual = 0;
 
     while(!WindowShouldClose()) {
 
@@ -1834,6 +1842,7 @@ int main(){
         if(IsKeyPressed(KEY_TWO)){ timeDilation = 5000; }
         if(IsKeyPressed(KEY_ONE)){ timeDilation = 200000; }
         if(IsKeyPressed(KEY_F1)){ showNametables = !showNametables; }
+        if(IsKeyPressed(KEY_F2)){ showVisual = !showVisual; }
         if(IsKeyPressed(KEY_N)){ skipToNMI = 1; }
         if(IsKeyPressed(KEY_R)){ skipToRTS = 1; timeDilation = 1; }
         if(IsKeyPressed(KEY_F)){ timeFreeze = !timeFreeze; }
@@ -1844,7 +1853,6 @@ int main(){
 
         BeginDrawing();
             ClearBackground(BLUE);
-            //DrawTextureEx(screenTex, zero, 0.0f, screenScale, WHITE);
 
         int div = 0;
         for(int i = writeLogPtr-1; i >= 0; i--){
@@ -1878,7 +1886,6 @@ int main(){
             for(int i = 0; i < 64; i++){
                 int level = memory[j*64 + i];
                 //int level = ppuMemory[0x2000 + j*64 + i];
-                //writeScreen(j,i,r,g,b);
                 drawByte(i+1, j, level);
             }
         }
@@ -1895,7 +1902,8 @@ int main(){
         DrawText("4 = blazing", 2, 240*3 - 12*4, 10, WHITE);
         DrawText("5 = ludicrous", 2, 240*3 - 12*3, 10, WHITE);
 
-        DrawText("F1: hide/show nametable scan", 100, 240*3 - 12*7, 10, WHITE);
+        DrawText("F1: hide/show nametable scan", 100, 240*3 - 12*8, 10, WHITE);
+        DrawText("F2: hide/show visual", 100, 240*3 - 12*7, 10, WHITE);
         DrawText("F: freeze/unfreeze", 100, 240*3 - 12*6, 10, WHITE);
         DrawText("Enter: exec 1 instruction", 100, 240*3 - 12*5, 10, WHITE);
         DrawText("R: skip to RTS and freeze", 100, 240*3 - 12*4, 10, WHITE);
@@ -1930,6 +1938,8 @@ int main(){
 
         }
 
+        if(showVisual)
+            DrawTextureEx(screenTex, (Vector2){96,0}, 0.0f, 3, WHITE);
 
         EndDrawing();
 
