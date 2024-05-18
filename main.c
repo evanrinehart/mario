@@ -16,6 +16,21 @@ int frameNo = 0;
 int writeLog[WRITELOG_SIZE];
 int writeLogPtr = 0;
 
+int pcLog[8] = {0,0,0,0,0,0,0,0};
+int pcLogPtr = 0;
+
+void remember(int pc){
+    pcLog[pcLogPtr] = pc;
+    pcLogPtr++;
+    if(pcLogPtr == 8) pcLogPtr = 0;
+}
+
+void showPcLog(){
+    for(int i = 0; i < 8; i++){
+        printf("i=%d pc=%04x %s\n", i, pcLog[i], pcLogPtr==i ? "*" : "");
+    }
+}
+
 void logWrite(int addr){
     if(writeLogPtr == WRITELOG_SIZE){
         for(int i = 0; i < WRITELOG_SIZE - 1; i++){
@@ -154,6 +169,7 @@ int ppuW = 0; // write toggle
 int ppuScrollX = 0;
 int ppuScrollY = 0;
 int ppuNameBase = 0x2000;
+int ppuDataReadBuffer = 0;
 
 struct PPUCtrl {
     int nametableBase;
@@ -370,6 +386,8 @@ void debug(){
         "] (c%d z%d i%d d%d o%d n%d))\n",
         p.carry, p.zero, p.interruptDisable, p.decimal, p.overflow, p.negative
     );
+
+    //showPcLog();
 }
 
 void showCPU(){
@@ -401,6 +419,8 @@ struct Instruction * fetchInstruction(int addr, int * arg1, int * arg2){
 
 unsigned char readMemory(int addr){
 
+    unsigned char byte;
+
     if(addr == 0x2000 || addr == 0x2001 || addr == 0x2003 || addr == 0x2005 || addr == 0x2006){
         printf("WEIRD read from $%04x (normally write only)\n", addr);
         return 0;
@@ -414,8 +434,14 @@ unsigned char readMemory(int addr){
         return oam[oamAddr];
     }
     else if(addr == 0x2007){
-        //printf("read from $2007 (PPU data)\n");
-        return 0;
+        byte = ppuDataReadBuffer;
+        ppuDataReadBuffer = ppuMemory[ppuAddr];
+        //printf("read %02x (%02x) from $2007 (PPU data) (ppuAddr=%04x\n", ppuDataReadBuffer, byte, ppuAddr);
+        if(ppuCtrl.vramAddressIncrement)
+            ppuAddr = (ppuAddr + 32) & VRAM_MAX;
+        else
+            ppuAddr = (ppuAddr + 1) & VRAM_MAX;
+        return byte;
     }
     else if(addr >= 0x4000 && addr <= 0x4014){
         printf("read from $%04x\n", addr);
@@ -481,11 +507,19 @@ void writeMemory(int addr, unsigned char byte){
             ppuAddr |= byte;
             ppuW = !ppuW;
         }
+        //printf("ppuAddr = %04x\n", ppuAddr);
     }
     else if(addr == 0x2007){
         //printf("write %02x to $2007 (PPU data) (addr=%04x)\n", byte, ppuAddr);
         if(ppuAddr < 0x2000){
-            printf("WUT attempting to write to CHR ROM.\n");
+            printf("PC=%04x WUT attempting to write to CHR ROM.\n", regs.PC);
+            debug();
+            printf("ppuAddr = %04x\n", ppuAddr);
+            printf("data = %02x\n", byte);
+            exit(1);
+        }
+        else if(ppuAddr > 0x3fff){
+            printf("PPUDATA write out of range\n");
             exit(1);
         }
         else{
@@ -622,6 +656,7 @@ void stepCPU(){
     }
     */
 
+    remember(regs.PC);
     regs.PC += size;
 
     switch(ins->opcode){
@@ -1706,9 +1741,9 @@ int main(){
             for(int i = 0; i < dotsPerFrame; i++){
                 stepPPU();
                 if(regs.PC == 0x8014){ timeFreeze = 1; break; }
-                //if(regs.PC == 0xf180){ timeFreeze = 1; break; }
+                //if(regs.PC == 0x86ff){ timeFreeze = 1; break; }
                 //if(regs.PC == 0xefbe){ timeFreeze = 1; break; }
-                //if(regs.PC == 0x8e92){ timeFreeze = 1; break; }
+                //if(regs.PC == 0x8e92 && frameNo >= 28){ timeFreeze = 1; break; }
                 //if(regs.PC == 0x93fc){ timeFreeze = 1; break; }
                 //if(regs.PC == 0x8082){ timeFreeze = 1; break; }
                 //if(regs.PC == 0x8227){ timeFreeze = 1; break; }
@@ -1801,15 +1836,17 @@ int main(){
 
         DrawText(TextFormat("frameNo = %d",frameNo), 2, 240*3 - 16, 10, WHITE);
 
+        int per = 61;
+
         if(showNametables){
         for(int i = 0; i < 0x400; i++){
-            unsigned char l = 7 * ppuMemory[0x2000 + i];
+            unsigned char l = per * ppuMemory[0x2000 + i];
             Color c = {l,l,l,255};
             DrawRectangle(100 + 12*(i%32), 200 + 12*(i/32), 12, 12, c);
         }
 
         for(int i = 0; i < 0x400; i++){
-            unsigned char l = 7 * ppuMemory[0x2400 + i];
+            unsigned char l = per * ppuMemory[0x2400 + i];
             Color c = {l,l,l,255};
             DrawRectangle(500 + 12*(i%32), 200 + 12*(i/32), 12, 12, c);
         }
