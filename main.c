@@ -1721,12 +1721,12 @@ int dequeue(){
     return (bit1 << 1) | bit0;
 }
 
-void fetchSlice(int line, int dot){
+void fetchSlice(int line, int coarseX){
 
     // get palette
-    unsigned char attr = ppuMemory[renderBase + 0x03c0 + 8*line + dot/32];
+    unsigned char attr = ppuMemory[renderBase + 0x03c0 + 8*line + coarseX/4];
     int row = (line / 32) & 1; // odd row yes no
-    int col = (dot  / 32) & 1; // odd column yes no
+    int col = coarseX & 1;
     int paletteNo;
     if(!row && !col) paletteNo = attr & 3;
     if(!row &&  col) paletteNo = (attr >> 2) & 3;
@@ -1740,11 +1740,12 @@ void fetchSlice(int line, int dot){
     slicePalette[0] = colors[ppuMemory[0x3f00]]; // universal bg color
 
     // get slice
-    int patternNo = ppuMemory[renderBase + 32 * line + dot / 8];
+    int patternNo   = ppuMemory[renderBase + (line/8)*32 + coarseX];
     int patternBase = ppuCtrl.bgPatternAddress ? 0x1000 : 0x0000;
+    int sliceNo = line % 8;
 
-    sliceQueue0 = ppuMemory[patternBase + patternNo*16];
-    sliceQueue1 = ppuMemory[patternBase + patternNo*16 + 8];
+    sliceQueue0 = ppuMemory[patternBase + patternNo*16 + sliceNo];
+    sliceQueue1 = ppuMemory[patternBase + patternNo*16 + 8 + sliceNo];
     sliceQueueSize = 8;
 
 }
@@ -1765,20 +1766,21 @@ int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
     if(dot < 256 && scanline >= 1 && scanline <= 240){
 
         if(dot == 0){
+            renderBase = ppuCtrl.nametableBase ? 0x2400 : 0x2000;
             coarseX = ppuScrollX / 8;
-            fetchSlice(scanline - 1, coarseX * 8);
+            fetchSlice(scanline - 1, coarseX);
             for(int i = 0; i < ppuFineX; i++) dequeue();
         }
 
         if(sliceQueueSize == 0){
-            if(coarseX == 31){
+            if(coarseX == 33){
                 coarseX = 0;
-                // switch nametable
+                renderBase = (renderBase == 0x2000) ? 0x2400 : 0x2000;
             }
             else{
                 coarseX++;
             }
-            fetchSlice(scanline - 1, coarseX * 8);
+            fetchSlice(scanline - 1, coarseX);
         }
 
         int bg = dequeue();
@@ -2093,6 +2095,11 @@ int main(){
         if(showPalettes)
             drawPalettes(0,0);
 
+        for(int s = 0; s < 16; s++){
+            int x = oam[s*4 + 3];
+            int y = oam[s*4 + 0];
+            DrawRing((Vector2){96 + x*3 + 12, y*3 + 12}, 6, 8, 0, 360, 24, RED);
+        }
 
 
         EndDrawing();
