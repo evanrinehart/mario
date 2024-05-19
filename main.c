@@ -1429,10 +1429,6 @@ void stepCPU(){
             }
 //if(arg21 == 0x8e19) cpuTimeDilation = 1000;
 
-            if(arg21 == 0xb0e6){
-                printf("S=%02x, JSR from %04x to %04x (%s)\n", regs.S, regs.PC, arg21, locationName(arg21));
-            }
-
             addr = regs.PC - 1;
             memory[0x0100 + regs.S] = addr >> 8;
             logWrite(0x0100 + regs.S);
