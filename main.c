@@ -2,8 +2,10 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <raylib.h>
+
 #include <rom.h>
 #include <instructions.h>
+#include <colors.h>
 
 unsigned char memory[65536];
 
@@ -1637,6 +1639,7 @@ void writeScreen(int row, int col, int r, int g, int b){
     pixel[0] = r;
     pixel[1] = g;
     pixel[2] = b;
+    //pixel[3] = 255;
 }
 
 
@@ -1687,13 +1690,22 @@ int cpuDots = 1;
 int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
 
     // process 1 dot here
+    // compute background pixel
+    // consult scanline's sprite buffer
     if(dot < 256 && scanline >= 1 && scanline <= 240){
         //int ptr = (scanline - 1) * 256 + dot;
         //int level = ppuMemory[0x2000 + (ptr % 0x4000)];
+        struct RGB *c = colors + (rand() % 64);
+        int r = c->r;
+        int g = c->g;
+        int b = c->b;
+        writeScreen(scanline-1,dot,r,g,b);
+/*
         int r = scanline - 1;
         int g = dot;
         int b = rand();
         writeScreen(scanline-1,dot,r/3,g/3,b);
+*/
     }
 
     dot++;
@@ -1752,6 +1764,64 @@ void drawByte(int x, int y, unsigned char byte){
     DrawText(msg, x*14, y*12, 10, WHITE);
 }
 
+void drawSwatch(int x, int y, int pal){
+    int index = ppuMemory[0x3f00 + pal];
+    struct RGB *color = &colors[index];
+    struct Color c = {color->r, color->g, color->b, 255};
+    DrawRectangle(x, y, 32, 32, c);
+}
+
+void drawPalettes(int baseX, int baseY){
+    // universal bg color
+    drawSwatch(32*0,32*0,0);
+    // bg palette zero
+    drawSwatch(32*0,32*1,1);
+    drawSwatch(32*0,32*2,2);
+    drawSwatch(32*0,32*3,3);
+
+    drawSwatch(32*1,32*0,4);
+    // bg palette 1
+    drawSwatch(32*1,32*1,5);
+    drawSwatch(32*1,32*2,6);
+    drawSwatch(32*1,32*3,7);
+
+    drawSwatch(32*2,32*0,8);
+    // bg palette 2
+    drawSwatch(32*2,32*1,9);
+    drawSwatch(32*2,32*2,10);
+    drawSwatch(32*2,32*3,11);
+
+    drawSwatch(32*3,32*0,12);
+    // bg palette 3
+    drawSwatch(32*3,32*1,13);
+    drawSwatch(32*3,32*2,14);
+    drawSwatch(32*3,32*3,15);
+
+    drawSwatch(32*0,32*(5+0),0);
+    // sprite palette zero
+    drawSwatch(32*0,32*(5+1),17);
+    drawSwatch(32*0,32*(5+2),18);
+    drawSwatch(32*0,32*(5+3),19);
+
+    drawSwatch(32*1,32*(5+0),4);
+    // sprite palette one
+    drawSwatch(32*1,32*(5+1),21);
+    drawSwatch(32*1,32*(5+2),22);
+    drawSwatch(32*1,32*(5+3),23);
+
+    drawSwatch(32*2,32*(5+0),8);
+    // sprite palette zero
+    drawSwatch(32*2,32*(5+1),25);
+    drawSwatch(32*2,32*(5+2),26);
+    drawSwatch(32*2,32*(5+3),27);
+
+    drawSwatch(32*3,32*(5+0),12);
+    // sprite palette one
+    drawSwatch(32*3,32*(5+1),29);
+    drawSwatch(32*3,32*(5+2),30);
+    drawSwatch(32*3,32*(5+3),31);
+}
+
 
 
 int main(){
@@ -1789,7 +1859,8 @@ int main(){
     int skipToNMI = 0;
     int skipToRTS = 0;
     int showNametables = 1;
-    int showVisual = 0;
+    int showVisual = 1;
+    int showPalettes = 0;
 
     while(!WindowShouldClose()) {
 
@@ -1839,6 +1910,7 @@ int main(){
         if(IsKeyPressed(KEY_ONE)){ timeDilation = 200000; }
         if(IsKeyPressed(KEY_F1)){ showNametables = !showNametables; }
         if(IsKeyPressed(KEY_F2)){ showVisual = !showVisual; }
+        if(IsKeyPressed(KEY_F3)){ showPalettes = !showPalettes; }
         if(IsKeyPressed(KEY_N)){ skipToNMI = 1; }
         if(IsKeyPressed(KEY_R)){ skipToRTS = 1; timeDilation = 1; }
         if(IsKeyPressed(KEY_F)){ timeFreeze = !timeFreeze; }
@@ -1898,8 +1970,9 @@ int main(){
         DrawText("4 = blazing", 2, 240*3 - 12*4, 10, WHITE);
         DrawText("5 = ludicrous", 2, 240*3 - 12*3, 10, WHITE);
 
-        DrawText("F1: hide/show nametable scan", 100, 240*3 - 12*8, 10, WHITE);
-        DrawText("F2: hide/show visual", 100, 240*3 - 12*7, 10, WHITE);
+        DrawText("F1: hide/show nametable scan", 100, 240*3 - 12*9, 10, WHITE);
+        DrawText("F2: hide/show visual", 100, 240*3 - 12*8, 10, WHITE);
+        DrawText("F3: hide/show palettes", 100, 240*3 - 12*7, 10, WHITE);
         DrawText("F: freeze/unfreeze", 100, 240*3 - 12*6, 10, WHITE);
         DrawText("Enter: exec 1 instruction", 100, 240*3 - 12*5, 10, WHITE);
         DrawText("R: skip to RTS and freeze", 100, 240*3 - 12*4, 10, WHITE);
@@ -1936,6 +2009,11 @@ int main(){
 
         if(showVisual)
             DrawTextureEx(screenTex, (Vector2){96,0}, 0.0f, 3, WHITE);
+
+        if(showPalettes)
+            drawPalettes(0,0);
+
+
 
         EndDrawing();
 
