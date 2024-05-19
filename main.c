@@ -171,6 +171,7 @@ int ppuW = 0; // write toggle
 int ppuScrollX = 0;
 int ppuScrollY = 0;
 int ppuNameBase = 0x2000;
+int ppuFineX = 0;
 unsigned char ppuDataReadBuffer = 0;
 
 struct PPUCtrl {
@@ -532,11 +533,13 @@ void writeMemory(int addr, unsigned char byte){
         if(ppuW == 0){
             //printf("write %02x to $2005 (PPU scroll X)\n", byte);
             ppuScrollX = byte;
+            ppuFineX = byte & 7;
             ppuW = !ppuW;
         }
         else if(ppuW == 1){
             //printf("write %02x to $2005 (PPU scroll Y)\n", byte);
             ppuScrollY = byte;
+            // mario doesn't have vertial scrolling
             ppuW = !ppuW;
         }
     }
@@ -1673,6 +1676,7 @@ void DrawVar(int n, const char * name, int addr, int size, Color color){
     DrawText(msg, 2, n * 12, 12, color);
 }
 
+/*
 void DrawCoinDisplay(int n){
     char msg[16];
     DrawText("Coin = ", 2, n * 12, 12, WHITE);
@@ -1681,6 +1685,72 @@ void DrawCoinDisplay(int n){
         DrawText(msg, 2 + 40 + i * 16, n * 12, 12, WHITE);
     }
 }
+*/
+
+
+// algorithm:
+// for each line
+// set coarse X high bits of scrollX
+// fetch first slice (pattern data and palette number)
+// load 8 pixels into a queue.
+// drop fine_x (low 3 bits of scrollX) from queue.
+// for each dot, dequeue 1 pixels worth of bits and output.
+// if queue is empty, increment coarse X.
+// if coarse X goes over 31, set coarse X to zero and switch nametable
+// continue until dot reaches end of line.
+// repeat for all lines.
+
+int coarseX = 0;
+struct RGB slicePalette[4]; // 0 1 2 or 3
+int renderBase = 0;
+unsigned char sliceQueue0 = 0; // up to 8 bits, dequeue 2 at a time
+unsigned char sliceQueue1 = 0; // up to 8 bits, dequeue 2 at a time
+int sliceQueueSize = 0; // number of pairs of bits
+
+int dequeue(){
+    if(sliceQueueSize == 0){
+        printf("please fix the code, you should not be dequeuing from empty\n");
+        exit(1);
+    }
+
+    int bit0 = sliceQueue0 >> 7;
+    int bit1 = sliceQueue1 >> 7;
+    sliceQueue0 <<= 1;
+    sliceQueue1 <<= 1;
+    sliceQueueSize--;
+    return (bit1 << 1) | bit0;
+}
+
+void fetchSlice(int line, int dot){
+
+    // get palette
+    unsigned char attr = ppuMemory[renderBase + 0x03c0 + 8*line + dot/32];
+    int row = (line / 32) & 1; // odd row yes no
+    int col = (dot  / 32) & 1; // odd column yes no
+    int paletteNo;
+    if(!row && !col) paletteNo = attr & 3;
+    if(!row &&  col) paletteNo = (attr >> 2) & 3;
+    if( row && !col) paletteNo = (attr >> 4) & 3;
+    if( row &&  col) paletteNo = (attr >> 6) & 3;
+    int palBase = 0x3f00 + paletteNo * 4;
+    for(int i = 0; i < 4; i++){
+        int code = ppuMemory[palBase + i];
+        slicePalette[i] = colors[code];
+    }
+    slicePalette[0] = colors[ppuMemory[0x3f00]]; // universal bg color
+
+    // get slice
+    int patternNo = ppuMemory[renderBase + 32 * line + dot / 8];
+    int patternBase = ppuCtrl.bgPatternAddress ? 0x1000 : 0x0000;
+
+    sliceQueue0 = ppuMemory[patternBase + patternNo*16];
+    sliceQueue1 = ppuMemory[patternBase + patternNo*16 + 8];
+    sliceQueueSize = 8;
+
+}
+
+
+
 
 int scanline = 0;
 int dot = 0;
@@ -1693,19 +1763,28 @@ int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
     // compute background pixel
     // consult scanline's sprite buffer
     if(dot < 256 && scanline >= 1 && scanline <= 240){
-        //int ptr = (scanline - 1) * 256 + dot;
-        //int level = ppuMemory[0x2000 + (ptr % 0x4000)];
-        struct RGB *c = colors + (rand() % 64);
-        int r = c->r;
-        int g = c->g;
-        int b = c->b;
-        writeScreen(scanline-1,dot,r,g,b);
-/*
-        int r = scanline - 1;
-        int g = dot;
-        int b = rand();
-        writeScreen(scanline-1,dot,r/3,g/3,b);
-*/
+
+        if(dot == 0){
+            coarseX = ppuScrollX / 8;
+            fetchSlice(scanline - 1, coarseX * 8);
+            for(int i = 0; i < ppuFineX; i++) dequeue();
+        }
+
+        if(sliceQueueSize == 0){
+            if(coarseX == 31){
+                coarseX = 0;
+                // switch nametable
+            }
+            else{
+                coarseX++;
+            }
+            fetchSlice(scanline - 1, coarseX * 8);
+        }
+
+        int bg = dequeue();
+        struct RGB color = slicePalette[bg];
+        writeScreen(scanline-1, dot, color.r, color.g, color.b);
+
     }
 
     dot++;
@@ -1730,6 +1809,7 @@ int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
         ppuStatus.spriteZeroHit = 1;
     }
 
+    // make 1 dots of progress on CPU
     cpuDots--;
     if(cpuDots == 0){
         if(nmiHappening){
