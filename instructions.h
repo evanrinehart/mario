@@ -44,7 +44,7 @@ struct Instruction instructions[256] = {
     {0xe1, "sbc", 2, 0, 6, 0, 0},
     {0xf1, "sbc", 2, 0, 5, 0, 0},
 
-    {0x29, "and", 2, 0, 2, 0, 0},
+    {0x29, "and", 2, 0, 2, 0, 0}, // used in sprite zero detect loop
     {0x25, "and", 2, 0, 3, 0, 0},
     {0x35, "and", 2, 0, 4, 0, 0},
     {0x2d, "and", 3, 0, 4, 0, 0},
@@ -61,9 +61,10 @@ struct Instruction instructions[256] = {
     
     {0x90, "bcc", 2, 0, 2, 0, 0},
     {0xb0, "bcs", 2, 0, 2, 0, 0},
-    {0xf0, "beq", 2, 0, 2, 0, 0},
+    {0xf0, "beq", 2, 0, 2, 0, 0}, // +1 if branch taken, +2 if to a new page
     {0x30, "bmi", 2, 0, 2, 0, 0},
-    {0xd0, "bne", 2, 0, 2, 0, 0},
+    // bne used in hblank delay loop
+    {0xd0, "bne", 2, 0, 2, 0, 0}, // +1 if branch taken, +2 if to a new page
     {0x10, "bpl", 2, 0, 2, 0, 0},
     {0x50, "bvc", 2, 0, 2, 0, 0},
     {0x70, "bvs", 2, 0, 2, 0, 0},
@@ -107,7 +108,7 @@ struct Instruction instructions[256] = {
     {0xfe, "inc", 3, 0, 7, 0, 0},
 
     {0xca, "dex", 1, 0, 2, 0, 0},
-    {0x88, "dey", 1, 0, 2, 0, 0},
+    {0x88, "dey", 1, 0, 2, 0, 0}, // used in hblank delay loop
 
     {0xe8, "inx", 1, 0, 2, 0, 0},
     {0xc8, "iny", 1, 0, 2, 0, 0},
@@ -130,7 +131,7 @@ struct Instruction instructions[256] = {
     {0xa9, "lda", 2, 0, 2, 0, 0},
     {0xa5, "lda", 2, 0, 3, 0, 0},
     {0xb5, "lda", 2, 0, 4, 0, 0},
-    {0xad, "lda", 3, 0, 4, 0, 0},
+    {0xad, "lda", 3, 0, 4, 0, 0}, // used in sprite zero detect loop
     {0xbd, "lda", 3, 0, 4, 0, 0},
     {0xb9, "lda", 3, 0, 4, 0, 0},
     {0xa1, "lda", 2, 0, 6, 0, 0},

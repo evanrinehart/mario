@@ -12,6 +12,8 @@ unsigned char memory[65536];
 int timeDilation = 1;
 int timeFreeze = 0;
 
+int dmaFlag = 0;
+
 int frameNo = 0;
 
 #define WRITELOG_SIZE 64
@@ -174,6 +176,9 @@ int ppuNameBase = 0x2000;
 int ppuFineX = 0;
 unsigned char ppuDataReadBuffer = 0;
 
+struct OAMEntry spriteOutputUnit[8];
+int numSprites = 0;
+
 struct PPUCtrl {
     int nametableBase;
     int vramAddressIncrement; // 0->1, 1->32
@@ -243,6 +248,20 @@ unsigned char packGamepad(){
 }
 
 
+
+void findSpritesOnLine(int line){
+    // clear the spriteOutputUnits and load up to 8 on the given line
+    numSprites = 0;
+    for(int i = 0; i < 16; i++){
+        unsigned char *ptr = &oam[i*4];
+        int y = ptr[0];
+        // this is ignoring priority
+        if(line <= y && y <= line + 7){
+            if(numSprites == 8) break; // sprite overflow?
+            spriteOutputUnit[numSprites++] = unpackOAMEntry(ptr);
+        }
+    }
+}
 
 
 unsigned char read2002() {
@@ -531,7 +550,7 @@ void writeMemory(int addr, unsigned char byte){
     }
     else if(addr == 0x2005){
         if(ppuW == 0){
-            //printf("write %02x to $2005 (PPU scroll X)\n", byte);
+            printf("write %02x to $2005 (PPU scroll X)\n", byte);
             ppuScrollX = byte;
             ppuFineX = byte & 7;
             ppuW = !ppuW;
@@ -581,12 +600,14 @@ void writeMemory(int addr, unsigned char byte){
         }
     }
     else if(addr == 0x4014){
-        //printf("write %02x to $4014 (OAM DMA)\n", byte);
+        printf("write %02x to $4014 (OAM DMA)\n", byte);
         int ptr = oamAddr;
         for(int i = 0; i < 256; i++){
             oam[ptr] = memory[0x200 + i];
             if(++ptr > 255) ptr = 0;
         }
+
+        dmaFlag = 1;
 
         // TODO
         // OAM DMA is how sprites in oam are updated
@@ -907,6 +928,13 @@ void stepCPU(){
 
         case 0xa6: // LDX $07
             regs.X = memory[arg1];
+            regs.P.zero     = regs.X == 0;
+            regs.P.negative = regs.X >> 7;
+            break;
+
+        case 0xb6: // LDX $07, Y
+            addr = (arg1 + regs.Y) & 0xff;
+            regs.X = memory[addr];
             regs.P.zero     = regs.X == 0;
             regs.P.negative = regs.X >> 7;
             break;
@@ -1299,6 +1327,13 @@ void stepCPU(){
 
         case 0xed: // SBC $0201
             addr = (arg2 << 8) | arg1;
+            m = readMemory(addr);
+            regs.A = sbc(regs.A, m, regs.P.carry, &regs.P);
+            break;
+
+        case 0xfd: // SBC $0201, X
+            arg21 = (arg2 << 8) | arg1;
+            addr = (arg21 + regs.X) & 0xffff;
             m = readMemory(addr);
             regs.A = sbc(regs.A, m, regs.P.carry, &regs.P);
             break;
@@ -1724,11 +1759,15 @@ int dequeue(){
 void fetchSlice(int line, int coarseX){
 
     // get palette
-    unsigned char attr = ppuMemory[renderBase + 0x03c0 + 8*line + coarseX/4];
-    int row = (line / 32) & 1; // odd row yes no
-    int col = coarseX & 1;
-    int paletteNo;
-    if(!row && !col) paletteNo = attr & 3;
+    unsigned char attr = ppuMemory[renderBase + 0x03c0 + (line/32)*8 + coarseX/4];
+    //int paletteNo = (attr >> 0) & 3; // top left
+    //int paletteNo = (attr >> 2) & 3; // top right
+    //int paletteNo = (attr >> 4) & 3; // bottom left
+    //int paletteNo = (attr >> 6) & 3;  // bototm right
+    int paletteNo = 0;
+    int row = (line / 16) & 1; // odd row yes no
+    int col = (coarseX / 2) & 1; // odd column yes no
+    if(!row && !col) paletteNo = (attr >> 0) & 3;
     if(!row &&  col) paletteNo = (attr >> 2) & 3;
     if( row && !col) paletteNo = (attr >> 4) & 3;
     if( row &&  col) paletteNo = (attr >> 6) & 3;
@@ -1760,6 +1799,15 @@ int nmiHappening = 0;
 int cpuDots = 1;
 int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
 
+    if(dmaFlag){
+        dmaFlag = 0;
+        //cpuDots += 3 * 513;
+    }
+
+    if(dot == 0 && scanline < 240){
+//        findSpritesOnLine(scanline + 1); // 
+    }
+
     // process 1 dot here
     // compute background pixel
     // consult scanline's sprite buffer
@@ -1773,7 +1821,7 @@ int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
         }
 
         if(sliceQueueSize == 0){
-            if(coarseX == 33){
+            if(coarseX == 31){
                 coarseX = 0;
                 renderBase = (renderBase == 0x2000) ? 0x2400 : 0x2000;
             }
@@ -1783,9 +1831,14 @@ int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
             fetchSlice(scanline - 1, coarseX);
         }
 
-        int bg = dequeue();
+        int bg = dequeue(); // the background pixel
         struct RGB color = slicePalette[bg];
-        writeScreen(scanline-1, dot, color.r, color.g, color.b);
+        //if((scanline-1)%32 == 0 || dot % 32 == 0){
+        //    writeScreen(scanline-1, dot, 255,0,0);
+        //}
+        //else{
+            writeScreen(scanline-1, dot, color.r, color.g, color.b);
+        //}
 
     }
 
@@ -1807,7 +1860,7 @@ int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
         }
     }
 
-    if(dot == oam[3] && scanline == oam[0] && /* sprite0 and bg not transparent */ 1){
+    if(dot == oam[3] && scanline - 1 == oam[0] + 5 && /* sprite0 and bg not transparent */ 1){
         ppuStatus.spriteZeroHit = 1;
     }
 
@@ -1940,7 +1993,7 @@ int main(){
     int stepFlag = 0;
     int skipToNMI = 0;
     int skipToRTS = 0;
-    int showNametables = 1;
+    int showNametables = 0;
     int showVisual = 1;
     int showPalettes = 0;
 
@@ -1970,6 +2023,7 @@ int main(){
             for(int i = 0; i < dotsPerFrame; i++){
                 stepPPU();
                 if(regs.PC == 0x8014){ timeFreeze = 1; break; }
+                //if(regs.PC == 0x813b && frameNo > 800){ timeFreeze = 1; break; }
                 //if(regs.PC == 0x86ff){ timeFreeze = 1; break; }
                 //if(regs.PC == 0xefbe){ timeFreeze = 1; break; }
                 //if(regs.PC == 0x8e92 && frameNo >= 28){ timeFreeze = 1; break; }
@@ -2028,7 +2082,7 @@ int main(){
         //int track = 0x1d; // player state
         //int track = 0x86; // player X position
         //int track = 0x06a1; // metatilebuffer (11 cells)
-        int track = 0x03d0; // player offscreen bits
+        int track = 0x0776; // player offscreen bits
         DrawRing((Vector2){14*(track%64 + 1)+6,12*(track/64)+5}, 20, 24, 0, 360, 24, PURPLE);
 
         for(int j = 0; j < 48; j++){
@@ -2095,11 +2149,14 @@ int main(){
         if(showPalettes)
             drawPalettes(0,0);
 
-        for(int s = 0; s < 16; s++){
+        for(int s = 0; s < 64; s++){
             int x = oam[s*4 + 3];
             int y = oam[s*4 + 0];
-            DrawRing((Vector2){96 + x*3 + 12, y*3 + 12}, 6, 8, 0, 360, 24, RED);
+            //DrawRing((Vector2){96 + x*3 + 4, y*3 + 4}, 6, 8, 0, 360, 24, RED);
+            DrawRectangleLines(96 + 3*x, 3*y, 3*8, 3*8, RED);
         }
+
+        DrawRing((Vector2){96 + 3*dot + 4, 4 + 3*(scanline - 1)}, 6, 8, 0, 360, 24, BLUE);
 
 
         EndDrawing();
