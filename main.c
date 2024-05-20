@@ -15,6 +15,8 @@ int timeFreeze = 0;
 int dmaFlag = 0;
 
 int frameNo = 0;
+int scanline = 0;
+int dot = 0;
 
 #define WRITELOG_SIZE 64
 int writeLog[WRITELOG_SIZE];
@@ -496,8 +498,12 @@ unsigned char readMemory(int addr){
     }
     else if(addr == 0x2007){
         byte = ppuDataReadBuffer;
-        ppuDataReadBuffer = ppuMemory[ppuAddr];
+//        if(ppuAddr == 0x3f10)
+//            ppuDataReadBuffer = ppuMemory[0x3f00];
+//        else
+            ppuDataReadBuffer = ppuMemory[ppuAddr];
         //printf("read %02x (%02x) from $2007 (PPU data) (ppuAddr=%04x\n", ppuDataReadBuffer, byte, ppuAddr);
+
         if(ppuCtrl.vramAddressIncrement)
             ppuAddr = (ppuAddr + 32) & VRAM_MAX;
         else
@@ -531,7 +537,7 @@ unsigned char readMemory(int addr){
 
 void writeMemory(int addr, unsigned char byte){
     if(addr == 0x2000) {
-        //printf("write %02x to %04x (PPU ctrl)\n", byte, addr);
+        //printf("frame=%d line=%d dot=%d PC=%04x write %02x to %04x (PPU ctrl)\n", frameNo, scanline, dot, regs.PC, byte, addr);
         write2000(byte);
     }
     else if(addr == 0x2001){
@@ -550,7 +556,7 @@ void writeMemory(int addr, unsigned char byte){
     }
     else if(addr == 0x2005){
         if(ppuW == 0){
-            //printf("write %02x to $2005 (PPU scroll X)\n", byte);
+            //printf("frame=%d line=%d dot=%d PC=%04x write %02x to $2005 (PPU scroll X)\n", frameNo, scanline, dot, regs.PC, byte);
             ppuScrollX = byte;
             ppuFineX = byte & 7;
             ppuW = !ppuW;
@@ -563,16 +569,19 @@ void writeMemory(int addr, unsigned char byte){
         }
     }
     else if(addr == 0x2006){
-        //printf("write %02x to $2006 (PPU addr)\n", byte);
+        //printf("frame=%d line=%d dot=%d PC=%04x write %02x to $2006 (PPU addr) ", frameNo, scanline, dot, regs.PC, byte);
         if(ppuW == 0){
             ppuAddr = (int)byte << 8;
             ppuW = !ppuW;
+
+            // internally, first write to this address clobbers the nametable base
+            ppuCtrl.nametableBase = (byte >> 2) & 3;
         }
         else if(ppuW == 1){
             ppuAddr |= byte;
             ppuW = !ppuW;
         }
-        //printf("ppuAddr = %04x\n", ppuAddr);
+        //printf("now ppuAddr = %04x\n", ppuAddr);
     }
     else if(addr == 0x2007){
         //printf("write %02x to $2007 (PPU data) (addr=%04x)\n", byte, ppuAddr);
@@ -592,7 +601,8 @@ void writeMemory(int addr, unsigned char byte){
                 printf("they tried to use mirroring (%04x)\n", ppuAddr);
                 exit(1);
             }
-            ppuMemory[ppuAddr] = byte;
+            if(ppuAddr == 0x3f10){ ppuMemory[0x3f00] = byte; }
+            else{ ppuMemory[ppuAddr] = byte; }
             if(ppuCtrl.vramAddressIncrement)
                 ppuAddr = (ppuAddr + 32) & VRAM_MAX;
             else
@@ -1854,8 +1864,6 @@ void fetchSlice(int line, int coarseX){
 
 
 
-int scanline = 0;
-int dot = 0;
 int nmiComing = 0;
 int nmiHappening = 0;
 int cpuDots = 1;
@@ -2061,6 +2069,7 @@ int main(){
     int showNametables = 0;
     int showVisual = 1;
     int showPalettes = 0;
+    int showMemory = 0;
 
     while(!WindowShouldClose()) {
 
@@ -2112,9 +2121,10 @@ int main(){
         if(IsKeyPressed(KEY_THREE)){ timeDilation = 1000; }
         if(IsKeyPressed(KEY_TWO)){ timeDilation = 5000; }
         if(IsKeyPressed(KEY_ONE)){ timeDilation = 200000; }
-        if(IsKeyPressed(KEY_F1)){ showNametables = !showNametables; }
+        if(IsKeyPressed(KEY_F1)){ showMemory = !showMemory; }
         if(IsKeyPressed(KEY_F2)){ showVisual = !showVisual; }
         if(IsKeyPressed(KEY_F3)){ showPalettes = !showPalettes; }
+        if(IsKeyPressed(KEY_F4)){ showNametables = !showNametables; }
         if(IsKeyPressed(KEY_N)){ skipToNMI = 1; }
         if(IsKeyPressed(KEY_R)){ skipToRTS = 1; timeDilation = 1; }
         if(IsKeyPressed(KEY_F)){ timeFreeze = !timeFreeze; }
@@ -2125,6 +2135,9 @@ int main(){
 
         BeginDrawing();
             ClearBackground(BLUE);
+
+
+        if(showMemory){
 
         int div = 0;
         for(int i = writeLogPtr-1; i >= 0; i--){
@@ -2145,6 +2158,7 @@ int main(){
             }
         }
 
+
         //07a2, y = 07a2 / 256, x = 07a2 % 256
         //int track = 0x0045;//player moving direction, check
         //int track = 0x1d; // player state
@@ -2157,7 +2171,6 @@ int main(){
             if(j%4 == 0) drawByte(0, j, j/4);
             for(int i = 0; i < 64; i++){
                 int level = memory[j*64 + i];
-                //int level = ppuMemory[0x2000 + j*64 + i];
                 drawByte(i+1, j, level);
             }
         }
@@ -2174,21 +2187,22 @@ int main(){
         DrawText("4 = blazing", 2, 240*3 - 12*4, 10, WHITE);
         DrawText("5 = ludicrous", 2, 240*3 - 12*3, 10, WHITE);
 
-        DrawText("F1: hide/show nametable scan", 100, 240*3 - 12*9, 10, WHITE);
-        DrawText("F2: hide/show visual", 100, 240*3 - 12*8, 10, WHITE);
-        DrawText("F3: hide/show palettes", 100, 240*3 - 12*7, 10, WHITE);
+        DrawText("F1: hide/show cpu memory", 100, 240*3 - 12*10, 10, WHITE);
+        DrawText("F2: hide/show visual", 100, 240*3 - 12*9, 10, WHITE);
+        DrawText("F3: hide/show palettes", 100, 240*3 - 12*8, 10, WHITE);
+        DrawText("F4: hide/show nametable scan", 100, 240*3 - 12*7, 10, WHITE);
         DrawText("F: freeze/unfreeze", 100, 240*3 - 12*6, 10, WHITE);
         DrawText("Enter: exec 1 instruction", 100, 240*3 - 12*5, 10, WHITE);
         DrawText("R: skip to RTS and freeze", 100, 240*3 - 12*4, 10, WHITE);
         DrawText("N: skip to NMI and freeze", 100, 240*3 - 12*3, 10, WHITE);
 
-        DrawText(TextFormat("PPUCtrl = %02x\n", ppuCtrlByte), 400, 240*3-50, 10, WHITE);
-
         DrawText(TextFormat("frameNo = %d",frameNo), 2, 240*3 - 16, 10, WHITE);
 
-        int per = 61;
+        }
+
 
         if(showNametables){
+        int per = 61;
         for(int i = 0; i < 0x400; i++){
             unsigned char l = per * ppuMemory[0x2000 + i];
             Color c = {l,l,l,255};
@@ -2211,20 +2225,23 @@ int main(){
 
         }
 
-        if(showVisual)
+        if(showVisual){
             DrawTextureEx(screenTex, (Vector2){96,0}, 0.0f, 3, WHITE);
+
+            if(showMemory){
+                for(int s = 0; s < 64; s++){
+                    int x = oam[s*4 + 3];
+                    int y = oam[s*4 + 0];
+                    DrawRectangleLines(96 + 3*x, 3*y, 3*8, 3*8, RED);
+                }
+            }
+        }
 
         if(showPalettes)
             drawPalettes(0,0);
 
-        for(int s = 0; s < 64; s++){
-            int x = oam[s*4 + 3];
-            int y = oam[s*4 + 0];
-            //DrawRing((Vector2){96 + x*3 + 4, y*3 + 4}, 6, 8, 0, 360, 24, RED);
-            //DrawRectangleLines(96 + 3*x, 3*y, 3*8, 3*8, RED);
-        }
 
-        DrawRing((Vector2){96 + 3*dot + 4, 4 + 3*(scanline - 1)}, 6, 8, 0, 360, 24, BLUE);
+        //DrawRing((Vector2){96 + 3*dot + 4, 4 + 3*(scanline - 1)}, 6, 8, 0, 360, 24, BLUE);
 
 
         EndDrawing();
