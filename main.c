@@ -550,7 +550,7 @@ void writeMemory(int addr, unsigned char byte){
     }
     else if(addr == 0x2005){
         if(ppuW == 0){
-            printf("write %02x to $2005 (PPU scroll X)\n", byte);
+            //printf("write %02x to $2005 (PPU scroll X)\n", byte);
             ppuScrollX = byte;
             ppuFineX = byte & 7;
             ppuW = !ppuW;
@@ -600,7 +600,7 @@ void writeMemory(int addr, unsigned char byte){
         }
     }
     else if(addr == 0x4014){
-        printf("write %02x to $4014 (OAM DMA)\n", byte);
+        //printf("write %02x to $4014 (OAM DMA)\n", byte);
         int ptr = oamAddr;
         for(int i = 0; i < 256; i++){
             oam[ptr] = memory[0x200 + i];
@@ -805,6 +805,15 @@ void stepCPU(){
             c = regs.X - arg1;
             regs.P.negative  = c >> 7;
             break;
+
+        case 0xe4: // CPX $06
+            m = memory[arg1];
+            regs.P.carry     = regs.X >= m;
+            regs.P.zero      = regs.X == m;
+            c = regs.X - m;
+            regs.P.negative  = c >> 7;
+            break;
+            
 
         case 0xc0: // CPY #$07
             regs.P.carry     = regs.Y >= arg1;
@@ -1756,6 +1765,42 @@ int dequeue(){
     return (bit1 << 1) | bit0;
 }
 
+void fetchSlice2(int table, int patternNo, int line, unsigned char* plane0, unsigned char* plane1){
+    int addr = table ? 0x1000 : 0x0000;
+    addr += patternNo * 16;
+    addr += line;
+    *plane0 = ppuMemory[addr];
+    *plane1 = ppuMemory[addr + 8];
+}
+
+// form a number 0 to 3 using two bits from a slice
+int extractFromSlice(int x, unsigned char plane0, unsigned char plane1){
+    int bit0 = (plane0 >> (7 - x)) & 1;
+    int bit1 = (plane1 >> (7 - x)) & 1;
+    return (bit1 << 1) | bit0;
+}
+
+
+// return a final color index for sprites here, or -1 if transparent
+int loopOverSpritesHere(int line, int dot){
+    int table = ppuCtrl.spritePatternAddress; // 0 or 1
+    int result = -1;
+    unsigned char code;
+    for(int i = 0; i < 64; i++){
+        int y = oam[i*4];
+        int x = oam[i*4 + 3];
+        if(y <= line && line <= y + 7 && x <= dot && dot <= x + 7){
+            int patternNo = oam[i*4 + 1];
+            unsigned char plane0;
+            unsigned char plane1;
+            fetchSlice2(table, patternNo, y-line, &plane0, &plane1);
+            code = extractFromSlice(dot - x, plane0, plane1);
+            if(code != 0x00) result = code;
+        }
+    }
+    return result;
+}
+
 void fetchSlice(int line, int coarseX){
 
     // get palette
@@ -1832,13 +1877,16 @@ int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
         }
 
         int bg = dequeue(); // the background pixel
-        struct RGB color = slicePalette[bg];
-        //if((scanline-1)%32 == 0 || dot % 32 == 0){
-        //    writeScreen(scanline-1, dot, 255,0,0);
-        //}
-        //else{
-            writeScreen(scanline-1, dot, color.r, color.g, color.b);
-        //}
+        int fg = loopOverSpritesHere(scanline - 1, dot); // sprite pixel, if any
+
+        struct RGB color;
+        if(fg < 0){
+            color = slicePalette[bg];
+        }
+        else{
+            color = colors[35+fg];
+        }
+        writeScreen(scanline-1, dot, color.r, color.g, color.b);
 
     }
 
@@ -1999,6 +2047,9 @@ int main(){
 
     while(!WindowShouldClose()) {
 
+        //printf("Player X pos = %02x\n", memory[0x86]);
+        //printf("Player X vel = %u\n", memory[0x57]);
+
         pollGamepad();
 
         if(stepFlag){
@@ -2153,7 +2204,7 @@ int main(){
             int x = oam[s*4 + 3];
             int y = oam[s*4 + 0];
             //DrawRing((Vector2){96 + x*3 + 4, y*3 + 4}, 6, 8, 0, 360, 24, RED);
-            DrawRectangleLines(96 + 3*x, 3*y, 3*8, 3*8, RED);
+            //DrawRectangleLines(96 + 3*x, 3*y, 3*8, 3*8, RED);
         }
 
         DrawRing((Vector2){96 + 3*dot + 4, 4 + 3*(scanline - 1)}, 6, 8, 0, 360, 24, BLUE);
