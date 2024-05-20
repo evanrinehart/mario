@@ -1782,7 +1782,7 @@ int extractFromSlice(int x, unsigned char plane0, unsigned char plane1){
 
 
 // return a final color index for sprites here, or -1 if transparent
-int loopOverSpritesHere(int line, int dot){
+int loopOverSpritesHere(int bg, int line, int dot){
     int table = ppuCtrl.spritePatternAddress; // 0 or 1
     int result = -1;
     unsigned char code;
@@ -1794,15 +1794,25 @@ int loopOverSpritesHere(int line, int dot){
             unsigned char attr = oam[i*4 + 2];
             unsigned char plane0;
             unsigned char plane1;
-            fetchSlice2(table, patternNo, 7 - (line - y), &plane0, &plane1);
+            if((attr >> 7) & 1){
+                fetchSlice2(table, patternNo, 7 - (line - y), &plane0, &plane1);
+            }
+            else{
+                fetchSlice2(table, patternNo, line - y, &plane0, &plane1);
+            }
             if((attr >> 6) & 1){
                 code = extractFromSlice(7 - (dot - x), plane0, plane1);
             }
             else{
                 code = extractFromSlice(dot - x, plane0, plane1);
             }
-            int palBase = 0x3f10 + 4*(attr & 3);
-            if(code != 0x00) result = ppuMemory[palBase + code];
+            if(code != 0x00){
+                int behindBg = (attr >> 5) & 1;
+                if(!(bg && behindBg)){
+                    int palBase = 0x3f10 + 4*(attr & 3);
+                    result = ppuMemory[palBase + code];
+                }
+            }
         }
     }
     return result;
@@ -1884,7 +1894,7 @@ int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
         }
 
         int bg = dequeue(); // the background pixel
-        int fg = loopOverSpritesHere(scanline - 1, dot); // sprite pixel, if any
+        int fg = loopOverSpritesHere(bg, scanline - 1, dot); // sprite pixel, if any
 
         struct RGB color;
         if(fg < 0){
