@@ -1791,11 +1791,18 @@ int loopOverSpritesHere(int line, int dot){
         int x = oam[i*4 + 3];
         if(y <= line && line <= y + 7 && x <= dot && dot <= x + 7){
             int patternNo = oam[i*4 + 1];
+            unsigned char attr = oam[i*4 + 2];
             unsigned char plane0;
             unsigned char plane1;
-            fetchSlice2(table, patternNo, y-line, &plane0, &plane1);
-            code = extractFromSlice(dot - x, plane0, plane1);
-            if(code != 0x00) result = code;
+            fetchSlice2(table, patternNo, 7 - (line - y), &plane0, &plane1);
+            if((attr >> 6) & 1){
+                code = extractFromSlice(7 - (dot - x), plane0, plane1);
+            }
+            else{
+                code = extractFromSlice(dot - x, plane0, plane1);
+            }
+            int palBase = 0x3f10 + 4*(attr & 3);
+            if(code != 0x00) result = ppuMemory[palBase + code];
         }
     }
     return result;
@@ -1884,7 +1891,7 @@ int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
             color = slicePalette[bg];
         }
         else{
-            color = colors[35+fg];
+            color = colors[fg];
         }
         writeScreen(scanline-1, dot, color.r, color.g, color.b);
 
