@@ -2099,7 +2099,7 @@ int main(){
             if(!skipToRTS && timeFreeze) dotsPerFrame = 0;
             for(int i = 0; i < dotsPerFrame; i++){
                 stepPPU();
-                if(regs.PC == 0x8014){ timeFreeze = 1; break; }
+                //if(regs.PC == 0x8014){ timeFreeze = 1; break; }
                 //if(regs.PC == 0x813b && frameNo > 800){ timeFreeze = 1; break; }
                 //if(regs.PC == 0x86ff){ timeFreeze = 1; break; }
                 //if(regs.PC == 0xefbe){ timeFreeze = 1; break; }
@@ -2229,6 +2229,7 @@ int main(){
             DrawTextureEx(screenTex, (Vector2){96,0}, 0.0f, 3, WHITE);
 
             if(showMemory){
+                DrawRing((Vector2){96 + 3*dot + 4, 4 + 3*(scanline - 1)}, 6, 8, 0, 360, 24, BLUE);
                 for(int s = 0; s < 64; s++){
                     int x = oam[s*4 + 3];
                     int y = oam[s*4 + 0];
@@ -2241,7 +2242,6 @@ int main(){
             drawPalettes(0,0);
 
 
-        //DrawRing((Vector2){96 + 3*dot + 4, 4 + 3*(scanline - 1)}, 6, 8, 0, 360, 24, BLUE);
 
 
         EndDrawing();
