@@ -14,3 +14,8 @@ rom.nes:
 	@echo "*"
 	@echo "*"
 	@exit 1
+
+clean:
+	rm headerize
+	rm rom.h
+	rm mario
