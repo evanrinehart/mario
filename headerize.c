@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-void dumpRom(){
-    FILE* file = fopen("rom.nes", "r");
+void dumpRom(const char *path){
+    FILE* file = fopen(path, "r");
     if(file==NULL){
         printf("failed to open rom\n");
         exit(1);
@@ -40,7 +40,7 @@ void dumpRom(){
 }
 
 int main(int argc, char * argv[]){
-    dumpRom();
+    dumpRom(argv[1]);
     return 0;
 }
 
