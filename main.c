@@ -1,11 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <stdint.h>
+#include <math.h>
+
 #include <raylib.h>
 
 #include <rom.h>
 #include <instructions.h>
 #include <colors.h>
+
+#include <apu.h>
 
 unsigned char memory[65536];
 
@@ -2030,20 +2035,91 @@ void drawPalettes(int baseX, int baseY){
     drawSwatch(32*3,32*(5+3),31);
 }
 
+#define AUDIO_BUFFER_SIZE 4096
+float audio_buffer[AUDIO_BUFFER_SIZE];
+int audio_buffer_ptr = 0;
+int audio_buffer_base = 0;
+int audio_buffer_amount = 0;
+
+
+float t = 0;
+
+void generate(int numSamples){
+    if(numSamples >= AUDIO_BUFFER_SIZE - audio_buffer_amount){
+        printf("audio buffer overflow :(\n");
+        return;
+    }
+
+    if(AUDIO_BUFFER_SIZE - audio_buffer_ptr < numSamples){
+        int half1 = AUDIO_BUFFER_SIZE - audio_buffer_ptr;
+        int half2 = numSamples - half1;
+        synth(&audio_buffer[audio_buffer_ptr], half1);
+        synth(&audio_buffer[0], half2);
+        audio_buffer_ptr = half2;
+        audio_buffer_amount += numSamples;
+    }
+    else{
+        synth(&audio_buffer[audio_buffer_ptr], numSamples);
+        audio_buffer_ptr += numSamples;
+        audio_buffer_amount += numSamples;
+    }
+
+/*
+    for(int i = 0; i < numSamples; i++){
+        audio_buffer[audio_buffer_ptr] = 0.25 * sin(2 * M_PI * 330 * t);
+        t += 1.0 / 44100.0;
+        if(t > 1.0) t -= 1.0;
+
+        audio_buffer_ptr++;
+        audio_buffer_amount++;
+        if(audio_buffer_ptr == AUDIO_BUFFER_SIZE)
+            audio_buffer_ptr = 0;
+    }
+*/
+}
+
+void AudioCb(void *buffer, unsigned int numWanted){
+    int16_t *out = buffer;
+    float amplitude;
+
+    if(audio_buffer_amount < numWanted){
+        printf("audio drop out :(\n");
+        for(int i = 0; i < numWanted; i++){
+            out[i] = 0;
+        }
+    }
+    else{
+        for(int i = 0; i < numWanted; i++){
+            amplitude = audio_buffer[audio_buffer_base];
+            amplitude = amplitude > 1.0f ? 1.0 : amplitude;
+            amplitude = amplitude < -1.0f ? -1.0 : amplitude;
+            out[i] = amplitude * INT16_MAX;
+            audio_buffer_base++;
+            audio_buffer_amount--;
+            if(audio_buffer_base == AUDIO_BUFFER_SIZE) audio_buffer_base = 0;
+        }
+    }
+}
+
+
 
 
 int main(){
 
+    InitAudioDevice();
+    if(IsAudioDeviceReady() == 0){
+        printf("raylib: audio not ready\n");
+        exit(1);
+    }
+
+    //SetAudioStreamBufferSizeDefault(AUDIO_BUFFER_SIZE);
+    AudioStream stream = LoadAudioStream(44100, 16, 1);
+    SetAudioStreamCallback(stream, AudioCb);
+    PlayAudioStream(stream);
+
     readRom();
     resetCPU();
     showCPU();
-
-/*
-    for(;;){
-        executeInstruction(regs.PC);
-        showCPU();
-    }
-*/
 
     InitWindow(screenW * screenScale, screenH * screenScale, "Zintendo Entertainment System");
     SetTargetFPS(60);
@@ -2057,11 +2133,6 @@ int main(){
     printf("screenImg.mipmaps = %d\n", screenImg.mipmaps);
     printf("screenImg.format  = %d\n", screenImg.format);
 
-    for(int j = 0; j < 30; j++){
-        for(int i = 0; i < 32; i++){
-            ppuMemory[0x2400 + j*32 + i] = rand();
-        }
-    }
 
     int stepFlag = 0;
     int skipToNMI = 0;
@@ -2072,6 +2143,11 @@ int main(){
     int showMemory = 0;
 
     while(!WindowShouldClose()) {
+
+        while(audio_buffer_amount < 2000){
+            //printf("generating 256");
+            generate(256);
+        }
 
         //printf("Player X pos = %02x\n", memory[0x86]);
         //printf("Player X vel = %u\n", memory[0x57]);
@@ -2125,6 +2201,7 @@ int main(){
         if(IsKeyPressed(KEY_F2)){ showVisual = !showVisual; }
         if(IsKeyPressed(KEY_F3)){ showPalettes = !showPalettes; }
         if(IsKeyPressed(KEY_F4)){ showNametables = !showNametables; }
+        //if(IsKeyPressed(KEY_TAB)){ silence = !silence; }
         if(IsKeyPressed(KEY_N)){ skipToNMI = 1; }
         if(IsKeyPressed(KEY_R)){ skipToRTS = 1; timeDilation = 1; }
         if(IsKeyPressed(KEY_F)){ timeFreeze = !timeFreeze; }
@@ -2248,6 +2325,8 @@ int main(){
 
     }
 
+    UnloadAudioStream(stream);
+    CloseAudioDevice();
     CloseWindow(); 
 
     return 0;
