@@ -1,8 +1,67 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 
 /* audio processing unit */
 
+// the apu contains several oscillators which are controlled by
+// precisely timed register writes by the cpu. So we keep an event queue
+// of what to do when.
+
+struct APUEvent {
+    unsigned char action;
+    unsigned char data;
+};
+
+#define EVENT_QUEUE_SIZE 256
+struct APUEvent eventQueue[EVENT_QUEUE_SIZE];
+float eventQueueTimes[EVENT_QUEUE_SIZE];
+int eventQueueBase = 0;
+int eventQueuePtr = 0;
+int eventQueueAmount = 0;
+
+void insertAudioEvent(struct APUEvent e, float time){
+    if(EVENT_QUEUE_SIZE - eventQueueAmount == 0){
+        printf("audio event queue overflow :(\n");
+        return;
+    }
+
+    eventQueue[eventQueuePtr] = e;
+    eventQueueTimes[eventQueuePtr] = time;
+    eventQueuePtr++;
+    if(eventQueuePtr == EVENT_QUEUE_SIZE) eventQueuePtr = 0;
+    eventQueueAmount++;
+}
+
+void dequeueAudioEvent(){
+    if(eventQueueAmount == 0){
+        fprintf(stderr, "dequeueAudioEvent: empty queue, your logic leaves much to be desired\n");
+        exit(1);
+    }
+    eventQueueBase++;
+    eventQueueAmount--;
+}
+
+int peekAudioEvent(struct APUEvent *e, float *time){
+    if(eventQueueAmount == 0) return 0;
+    *e    = eventQueue[eventQueueBase];
+    *time = eventQueueTimes[eventQueueBase];
+    return 1;
+} 
+
+
+struct SquareWave {
+    float phase;
+    float dt;
+    int enable;
+    float volume;
+    unsigned char timerHigh;
+    unsigned char timerLow;
+};
+
+struct SquareWave sqr[2] =
+    {{0.0, 220.0/44100.0, 0, 1.0, 7, 255},
+     {0.0, 220.0/44100.0, 0, 1.0, 7, 255}};
 
 // 0 to 1, repeats,
 float phase = 0.0;
@@ -31,15 +90,30 @@ float squareWave(float dt, float t){
     return value;
 }
 
-// makes timer signal every (N+1) / 179.MHz
-void setFrequency(float f){
-    dt = f / 44100.0;
+void setTimerLow(int ch, unsigned char byte){
+    sqr[ch].timerLow = byte;
+    int period = (sqr[ch].timerHigh << 8) | sqr[ch].timerLow;
+    float f = 1789773.0 / (16.0 * (period + 1));
+    sqr[ch].dt = f / 44100.0;
 }
 
-void setEnable(int en){
-    if(enable == en) return;
-    enable = en;
-    //if(en == 0) phase = 0.0;
+void setTimerHigh(int ch, unsigned char byte){
+    sqr[ch].timerHigh = byte;
+    int period = (sqr[ch].timerHigh << 8) | sqr[ch].timerLow;
+    float f = 1789773.0 / (16.0 * (period + 1));
+    sqr[ch].dt = f / 44100.0;
+}
+
+// makes timer signal every (N+1) / 179.MHz
+/*
+void setFrequency(int ch, float f){
+    sqr[ch].dt = f / 44100.0;
+}
+*/
+
+void setEnable(int ch, int en){
+    if(sqr[ch].enable == en) return;
+    sqr[ch].enable = en;
 }
 
 
@@ -149,17 +223,28 @@ void test(){
 // in 1/44100 seconds, the CPU cycles 40.4595 times
 void synth(float *out, int numSamples){
 
-    if(enable){
-        for(int i = 0; i < numSamples; i++){
-            out[i] = 0.1 * squareWave(dt, phase);
-            phase += dt;
-            if(phase > 1.0) phase -= 1.0;
-        }
-    }
-    else {
+    if(!sqr[0].enable && !sqr[1].enable){
         for(int i = 0; i < numSamples; i++){
             out[i] = 0.0;
         }
+        return;
+    }
+
+    for(int i = 0; i < numSamples; i++){
+        out[i] = 0.0;
+
+        if(sqr[0].enable){
+            out[i] += 0.1 * sqr[0].volume * squareWave(sqr[0].dt, sqr[0].phase);
+            sqr[0].phase += sqr[0].dt;
+            if(sqr[0].phase > 1.0) sqr[0].phase -= 1.0;
+        }
+
+        if(sqr[1].enable){
+            out[i] += 0.1 * sqr[1].volume * squareWave(sqr[1].dt, sqr[1].phase);
+            sqr[1].phase += sqr[1].dt;
+            if(sqr[1].phase > 1.0) sqr[1].phase -= 1.0;
+        }
+
     }
 
 }

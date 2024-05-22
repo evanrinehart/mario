@@ -13,8 +13,10 @@
 #include <colors.h>
 
 extern void test(void);
-extern void setEnable(int);
-extern void setFrequency(float);
+extern void setEnable(int ch, int en);
+//extern void setFrequency(int ch, float f);
+extern void setTimerLow(int ch, unsigned char byte);
+extern void setTimerHigh(int ch, unsigned char byte);
 extern void synth(float *out, int numSamples);
 
 unsigned char memory[65536];
@@ -635,17 +637,33 @@ void writeMemory(int addr, unsigned char byte){
         // the CPU is suspended during the transfer. It takes 513 or 514 cycles.
         // the data is transferred to OAM starting at the current OAM ADDR
     }
+    else if(addr == 0x4000){
+        if((byte & 0x0f) == 0){ setEnable(0, 0); }
+        else{ setEnable(0, 1); }
+    }
+    else if(addr == 0x4002){
+        setTimerLow(0, byte);
+        //printf("set timer period to byte=%u\n", byte);
+        //setFrequency(0, 1789773.0 / (16.0 * (byte + 1)));
+    }
+    else if(addr == 0x4003){
+        setTimerHigh(0, byte & 7);
+        //printf("set timer period to byte=%u\n", byte);
+        //setFrequency(0, 1789773.0 / (16.0 * (byte + 1)));
+    }
     else if(addr == 0x4004){
-        if((byte & 0x0f) == 0){
-            setEnable(0);
-        }
-        else{
-            setEnable(1);
-        }
+        if((byte & 0x0f) == 0){ setEnable(1, 0); }
+        else{ setEnable(1, 1); }
     }
     else if(addr == 0x4006){
-        printf("set timer period to byte=%u\n", byte);
-        setFrequency(1789773.0 / (16.0 * (byte + 1)));
+        setTimerLow(1, byte);
+        //printf("set timer period to byte=%u\n", byte);
+        //setFrequency(1, 1789773.0 / (16.0 * (byte + 1)));
+    }
+    else if(addr == 0x4007){
+        setTimerHigh(1, byte & 7);
+        //printf("set timer period to byte=%u\n", byte);
+        //setFrequency(1, 1789773.0 / (16.0 * (byte + 1)));
     }
     else if(addr >= 0x4000 && addr <= 0x4015){
         //printf("write %02x to %04x (sound chip)\n", byte, addr);
@@ -2224,6 +2242,7 @@ int main(){
         if(IsKeyPressed(KEY_F)){ timeFreeze = !timeFreeze; }
         if(timeFreeze && IsKeyPressed(KEY_ENTER)){ stepFlag = 1; }
 
+/*
         if(IsKeyDown(KEY_Z)){ setEnable(1); setFrequency(220.0); key=1; }
         if(key==1 && IsKeyUp(KEY_Z)){ setEnable(0); key=0; }
         if(IsKeyDown(KEY_X)){ setEnable(1); setFrequency(246.9); key=2; }
@@ -2234,6 +2253,7 @@ int main(){
         if(key==4 && IsKeyUp(KEY_V)){ setEnable(0); key=0; }
         if(IsKeyDown(KEY_B)){ setEnable(1); setFrequency(329.6); key=5; }
         if(key==5 && IsKeyUp(KEY_B)){ setEnable(0); key=0; }
+*/
 
         uploadScreen();
 
