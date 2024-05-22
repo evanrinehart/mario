@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <math.h>
 
+#include <threads.h>
+
 #include <raylib.h>
 
 #include <rom.h>
@@ -2050,6 +2052,8 @@ void drawPalettes(int baseX, int baseY){
     drawSwatch(32*3,32*(5+3),31);
 }
 
+mtx_t audio_mutex;
+
 #define AUDIO_BUFFER_SIZE 4096
 float audio_buffer[AUDIO_BUFFER_SIZE];
 int audio_buffer_ptr = 0;
@@ -2060,6 +2064,8 @@ int audio_buffer_amount = 0;
 float t = 0;
 
 void generate(int numSamples){
+    mtx_lock(&audio_mutex);
+
     if(numSamples >= AUDIO_BUFFER_SIZE - audio_buffer_amount){
         printf("audio buffer overflow :(\n");
         return;
@@ -2080,18 +2086,8 @@ void generate(int numSamples){
         if(audio_buffer_ptr == AUDIO_BUFFER_SIZE) audio_buffer_ptr = 0;
     }
 
-/*
-    for(int i = 0; i < numSamples; i++){
-        audio_buffer[audio_buffer_ptr] = 0.25 * sin(2 * M_PI * 330 * t);
-        t += 1.0 / 44100.0;
-        if(t > 1.0) t -= 1.0;
+    mtx_unlock(&audio_mutex);
 
-        audio_buffer_ptr++;
-        audio_buffer_amount++;
-        if(audio_buffer_ptr == AUDIO_BUFFER_SIZE)
-            audio_buffer_ptr = 0;
-    }
-*/
 }
 
 void AudioCb(void *buffer, unsigned int numWanted){
@@ -2107,6 +2103,7 @@ void AudioCb(void *buffer, unsigned int numWanted){
         }
     }
     else{
+        mtx_lock(&audio_mutex);
         for(int i = 0; i < numWanted; i++){
             amplitude = audio_buffer[audio_buffer_base];
             amplitude = amplitude > 1.0f ? 1.0 : amplitude;
@@ -2116,6 +2113,7 @@ void AudioCb(void *buffer, unsigned int numWanted){
             audio_buffer_amount--;
             if(audio_buffer_base == AUDIO_BUFFER_SIZE) audio_buffer_base = 0;
         }
+        mtx_unlock(&audio_mutex);
     }
 }
 
@@ -2129,6 +2127,7 @@ int main(){
     }
 
     //SetAudioStreamBufferSizeDefault(AUDIO_BUFFER_SIZE);
+    mtx_init(&audio_mutex, mtx_plain);
     AudioStream stream = LoadAudioStream(44100, 16, 1);
     SetAudioStreamCallback(stream, AudioCb);
     PlayAudioStream(stream);
@@ -2353,6 +2352,7 @@ int main(){
 
     }
 
+    mtx_destroy(&audio_mutex);
     UnloadAudioStream(stream);
     CloseAudioDevice();
     CloseWindow(); 
