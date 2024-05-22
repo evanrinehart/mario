@@ -10,7 +10,10 @@
 #include <instructions.h>
 #include <colors.h>
 
-#include <apu.h>
+extern void test(void);
+extern void setEnable(int);
+extern void setFrequency(float);
+extern void synth(float *out, int numSamples);
 
 unsigned char memory[65536];
 
@@ -2062,6 +2065,7 @@ void generate(int numSamples){
         synth(&audio_buffer[audio_buffer_ptr], numSamples);
         audio_buffer_ptr += numSamples;
         audio_buffer_amount += numSamples;
+        if(audio_buffer_ptr == AUDIO_BUFFER_SIZE) audio_buffer_ptr = 0;
     }
 
 /*
@@ -2102,8 +2106,6 @@ void AudioCb(void *buffer, unsigned int numWanted){
 }
 
 
-
-
 int main(){
 
     InitAudioDevice();
@@ -2141,6 +2143,8 @@ int main(){
     int showVisual = 1;
     int showPalettes = 0;
     int showMemory = 0;
+
+    int key = 0;
 
     while(!WindowShouldClose()) {
 
@@ -2207,6 +2211,16 @@ int main(){
         if(IsKeyPressed(KEY_F)){ timeFreeze = !timeFreeze; }
         if(timeFreeze && IsKeyPressed(KEY_ENTER)){ stepFlag = 1; }
 
+        if(IsKeyDown(KEY_Z)){ setEnable(1); setFrequency(220.0); key=1; }
+        if(key==1 && IsKeyUp(KEY_Z)){ setEnable(0); key=0; }
+        if(IsKeyDown(KEY_X)){ setEnable(1); setFrequency(246.9); key=2; }
+        if(key==2 && IsKeyUp(KEY_X)){ setEnable(0); key=0; }
+        if(IsKeyDown(KEY_C)){ setEnable(1); setFrequency(277.2); key=3; }
+        if(key==3 && IsKeyUp(KEY_C)){ setEnable(0); key=0; }
+        if(IsKeyDown(KEY_V)){ setEnable(1); setFrequency(293.7); key=4; }
+        if(key==4 && IsKeyUp(KEY_V)){ setEnable(0); key=0; }
+        if(IsKeyDown(KEY_B)){ setEnable(1); setFrequency(329.6); key=5; }
+        if(key==5 && IsKeyUp(KEY_B)){ setEnable(0); key=0; }
 
         uploadScreen();
 
