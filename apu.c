@@ -56,13 +56,12 @@ struct SquareWave {
     float volume;
     unsigned char timerHigh;
     unsigned char timerLow;
-
-    
+    unsigned char duty;//0=12.5% 1=25% 2=50% 3=25% negated
 };
 
 struct SquareWave sqr[2] =
-    {{0.0, 220.0/44100.0, 0.0, 7, 255},
-     {0.0, 220.0/44100.0, 0.0, 7, 255}};
+    {{0.0, 220.0/44100.0, 0.0, 7, 255, 2},
+     {0.0, 220.0/44100.0, 0.0, 7, 255, 1}};
 
 // 0 to 1, repeats,
 float phase = 0.0;
@@ -91,6 +90,30 @@ float squareWave(float dt, float t){
     return value;
 }
 
+float sqrGenerator(struct SquareWave *g){
+    float out = 0.0;
+    if(g->volume == 0) return 0.0;
+    if(g->duty == 2){ // 50% duty cycle
+        out += 0.1 * g->volume * squareWave(g->dt, g->phase);
+        g->phase += g->dt;
+        if(g->phase > 1.0) g->phase -= 1.0;
+    }
+    else{
+        float shift = g->duty == 0 ? 0.0625 : 0.125; // 12.5% or 25%
+        out += squareWave(g->dt/2, g->phase);
+        out -= squareWave(g->dt/2, fmod(g->phase + shift, 1));
+        out /= 2.0;
+        out = fabs(out);
+        out -= 0.5;
+        out *= 0.1 * g->volume;
+        //out = fabs(out);
+        //out -= ;
+        g->phase += g->dt/2;
+        if(g->phase > 1.0) g->phase -= 1.0;
+    }
+    return out;
+}
+
 void setTimerLow(int ch, unsigned char byte){
     sqr[ch].timerLow = byte;
     int period = (sqr[ch].timerHigh << 8) | sqr[ch].timerLow;
@@ -108,6 +131,10 @@ void setTimerHigh(int ch, unsigned char byte){
 void setVolume(int ch, unsigned char vol){
     float amplitude = (1.0 / 16.0) * (float)vol;
     sqr[ch].volume = amplitude;
+}
+
+void setDutyCycle(int ch, unsigned char d){
+    sqr[ch].duty = d;
 }
 
 
@@ -227,18 +254,8 @@ void synth(float *out, int numSamples){
     for(int i = 0; i < numSamples; i++){
         out[i] = 0.0;
 
-        if(sqr[0].volume > 0){
-            out[i] += 0.1 * sqr[0].volume * squareWave(sqr[0].dt, sqr[0].phase);
-            sqr[0].phase += sqr[0].dt;
-            if(sqr[0].phase > 1.0) sqr[0].phase -= 1.0;
-        }
-
-        if(sqr[1].volume > 0){
-            out[i] += 0.1 * sqr[1].volume * squareWave(sqr[1].dt, sqr[1].phase);
-            sqr[1].phase += sqr[1].dt;
-            if(sqr[1].phase > 1.0) sqr[1].phase -= 1.0;
-        }
-
+        out[i] += sqrGenerator(&sqr[0]);
+        out[i] += sqrGenerator(&sqr[1]);
     }
 
 }

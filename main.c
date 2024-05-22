@@ -14,6 +14,7 @@
 
 extern void test(void);
 extern void setVolume(int ch, unsigned char vol);
+extern void setDutyCycle(int ch, unsigned char d);
 //extern void setFrequency(int ch, float f);
 extern void setTimerLow(int ch, unsigned char byte);
 extern void setTimerHigh(int ch, unsigned char byte);
@@ -639,6 +640,7 @@ void writeMemory(int addr, unsigned char byte){
     }
     else if(addr == 0x4000){
         setVolume(0, byte & 0x0f);
+        setDutyCycle(0, byte >> 6);
     }
     else if(addr == 0x4002){
         setTimerLow(0, byte);
@@ -652,6 +654,7 @@ void writeMemory(int addr, unsigned char byte){
     }
     else if(addr == 0x4004){
         setVolume(1, byte & 0x0f);
+        setDutyCycle(1, byte >> 6);
     }
     else if(addr == 0x4006){
         setTimerLow(1, byte);
