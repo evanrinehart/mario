@@ -53,15 +53,16 @@ int peekAudioEvent(struct APUEvent *e, float *time){
 struct SquareWave {
     float phase;
     float dt;
-    int enable;
     float volume;
     unsigned char timerHigh;
     unsigned char timerLow;
+
+    
 };
 
 struct SquareWave sqr[2] =
-    {{0.0, 220.0/44100.0, 0, 1.0, 7, 255},
-     {0.0, 220.0/44100.0, 0, 1.0, 7, 255}};
+    {{0.0, 220.0/44100.0, 0.0, 7, 255},
+     {0.0, 220.0/44100.0, 0.0, 7, 255}};
 
 // 0 to 1, repeats,
 float phase = 0.0;
@@ -104,16 +105,9 @@ void setTimerHigh(int ch, unsigned char byte){
     sqr[ch].dt = f / 44100.0;
 }
 
-// makes timer signal every (N+1) / 179.MHz
-/*
-void setFrequency(int ch, float f){
-    sqr[ch].dt = f / 44100.0;
-}
-*/
-
-void setEnable(int ch, int en){
-    if(sqr[ch].enable == en) return;
-    sqr[ch].enable = en;
+void setVolume(int ch, unsigned char vol){
+    float amplitude = (1.0 / 16.0) * (float)vol;
+    sqr[ch].volume = amplitude;
 }
 
 
@@ -223,7 +217,7 @@ void test(){
 // in 1/44100 seconds, the CPU cycles 40.4595 times
 void synth(float *out, int numSamples){
 
-    if(!sqr[0].enable && !sqr[1].enable){
+    if(!sqr[0].volume && !sqr[1].volume){
         for(int i = 0; i < numSamples; i++){
             out[i] = 0.0;
         }
@@ -233,13 +227,13 @@ void synth(float *out, int numSamples){
     for(int i = 0; i < numSamples; i++){
         out[i] = 0.0;
 
-        if(sqr[0].enable){
+        if(sqr[0].volume > 0){
             out[i] += 0.1 * sqr[0].volume * squareWave(sqr[0].dt, sqr[0].phase);
             sqr[0].phase += sqr[0].dt;
             if(sqr[0].phase > 1.0) sqr[0].phase -= 1.0;
         }
 
-        if(sqr[1].enable){
+        if(sqr[1].volume > 0){
             out[i] += 0.1 * sqr[1].volume * squareWave(sqr[1].dt, sqr[1].phase);
             sqr[1].phase += sqr[1].dt;
             if(sqr[1].phase > 1.0) sqr[1].phase -= 1.0;

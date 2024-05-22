@@ -13,7 +13,7 @@
 #include <colors.h>
 
 extern void test(void);
-extern void setEnable(int ch, int en);
+extern void setVolume(int ch, unsigned char vol);
 //extern void setFrequency(int ch, float f);
 extern void setTimerLow(int ch, unsigned char byte);
 extern void setTimerHigh(int ch, unsigned char byte);
@@ -638,8 +638,7 @@ void writeMemory(int addr, unsigned char byte){
         // the data is transferred to OAM starting at the current OAM ADDR
     }
     else if(addr == 0x4000){
-        if((byte & 0x0f) == 0){ setEnable(0, 0); }
-        else{ setEnable(0, 1); }
+        setVolume(0, byte & 0x0f);
     }
     else if(addr == 0x4002){
         setTimerLow(0, byte);
@@ -652,8 +651,7 @@ void writeMemory(int addr, unsigned char byte){
         //setFrequency(0, 1789773.0 / (16.0 * (byte + 1)));
     }
     else if(addr == 0x4004){
-        if((byte & 0x0f) == 0){ setEnable(1, 0); }
-        else{ setEnable(1, 1); }
+        setVolume(1, byte & 0x0f);
     }
     else if(addr == 0x4006){
         setTimerLow(1, byte);
