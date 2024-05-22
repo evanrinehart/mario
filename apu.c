@@ -39,7 +39,7 @@ void setFrequency(float f){
 void setEnable(int en){
     if(enable == en) return;
     enable = en;
-    if(en == 0) phase = 0.0;
+    //if(en == 0) phase = 0.0;
 }
 
 

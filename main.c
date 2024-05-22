@@ -633,6 +633,18 @@ void writeMemory(int addr, unsigned char byte){
         // the CPU is suspended during the transfer. It takes 513 or 514 cycles.
         // the data is transferred to OAM starting at the current OAM ADDR
     }
+    else if(addr == 0x4004){
+        if((byte & 0x0f) == 0){
+            setEnable(0);
+        }
+        else{
+            setEnable(1);
+        }
+    }
+    else if(addr == 0x4006){
+        printf("set timer period to byte=%u\n", byte);
+        setFrequency(1789773.0 / (16.0 * (byte + 1)));
+    }
     else if(addr >= 0x4000 && addr <= 0x4015){
         //printf("write %02x to %04x (sound chip)\n", byte, addr);
         // TODO
@@ -2085,6 +2097,8 @@ void generate(int numSamples){
 void AudioCb(void *buffer, unsigned int numWanted){
     int16_t *out = buffer;
     float amplitude;
+
+    //printf("audio cb, wanted = %u\n", numWanted);
 
     if(audio_buffer_amount < numWanted){
         printf("audio drop out :(\n");
