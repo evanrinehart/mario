@@ -54,9 +54,12 @@ struct SquareWave {
     float phase;
     float dt;
     float volume;
+    int length; // decreases over time, silence note if it reaches zero
     unsigned char timerHigh;
     unsigned char timerLow;
     unsigned char duty;//0=12.5% 1=25% 2=50% 3=25% negated
+    unsigned char loop; // if 0, stop when length counter reaches zero
+    unsigned char constant; // if 0, decreasing envelope will be used for volume
 };
 
 struct SquareWave sqr[2] =
@@ -93,6 +96,7 @@ float squareWave(float dt, float t){
 float sqrGenerator(struct SquareWave *g){
     float out = 0.0;
     if(g->volume == 0) return 0.0;
+    if(g->length == 0) return 0.0;
     if(g->duty == 2){ // 50% duty cycle
         out += 0.1 * g->volume * squareWave(g->dt, g->phase);
         g->phase += g->dt;
@@ -137,6 +141,82 @@ void setDutyCycle(int ch, unsigned char d){
     sqr[ch].duty = d;
 }
 
+void setLoop(int ch, unsigned char l){
+    sqr[ch].loop = l;
+}
+
+void setConstantVolume(int ch, unsigned char c){
+    sqr[ch].constant = c;
+}
+
+unsigned char length_table[32] =
+    {
+        10, 254, 20, 2, 40, 4, 80, 6,
+        160, 8, 60, 10, 14, 12, 26, 14,
+        12, 16, 24, 18, 48, 20, 96, 22,
+        192, 24, 72, 26, 16, 28, 32, 30
+    };
+
+void setLengthCounter(int ch, unsigned char n){
+    sqr[ch].length = length_table[n];
+}
+
+// this frame counter has nothing to do with video frames
+int frameCounter = 2*14915;
+int frameCounterEnable = 0;
+int frameCounterPeriod = 2*14915;
+int frameCounterMode = 0;
+//int frameCounter = 18641;
+void apuFrameHalfClock(){
+    if(frameCounterEnable == 0) return;
+
+    frameCounter++;
+
+    int wholeFrame = frameCounter / 2;
+    int halfFrame = frameCounter % 2;
+
+    if(wholeFrame == 3728 && halfFrame){
+        // envelope, linear counter clock
+    }
+
+    if(wholeFrame == 7456 && halfFrame){
+        // envelope, linear counter clock
+        // length counter, sweep units
+
+        if(sqr[0].length > 0 && sqr[0].loop == 0){ sqr[0].length--; }
+        if(sqr[1].length > 0 && sqr[1].loop == 0){ sqr[1].length--; }
+    }
+
+    if(wholeFrame == 11185 && halfFrame){
+        // envelope, linear counter clock
+    }
+
+    if(
+        (frameCounterMode == 0 && wholeFrame == 14914 && halfFrame) ||
+        (frameCounterMode == 1 && wholeFrame == 18640 && halfFrame)
+    )
+    {
+        // envelope, linear counter clock
+        // length counter, sweep units
+        if(sqr[0].length > 0 && sqr[0].loop == 0){ sqr[0].length--; }
+        if(sqr[1].length > 0 && sqr[1].loop == 0){ sqr[1].length--; }
+    }
+
+    if(frameCounter == frameCounterPeriod) frameCounter = 0;
+}
+
+void setFrameCounterEnable(int en){
+    frameCounterEnable = en;
+    if(en == 0){
+        sqr[0].length = 0;
+        sqr[1].length = 0;
+    }
+}
+
+void setFrameCounterPeriod(unsigned char bit){
+    if(bit == 0) frameCounterPeriod = 14915;
+    if(bit == 1) frameCounterPeriod = 18641;
+}
 
 
 

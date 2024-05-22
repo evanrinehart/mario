@@ -15,10 +15,16 @@
 extern void test(void);
 extern void setVolume(int ch, unsigned char vol);
 extern void setDutyCycle(int ch, unsigned char d);
+extern void setLoop(int ch, unsigned char l);
+extern void setConstantVolume(int ch, unsigned char c);
+extern void setLengthCounter(int ch, unsigned char n);
 //extern void setFrequency(int ch, float f);
 extern void setTimerLow(int ch, unsigned char byte);
 extern void setTimerHigh(int ch, unsigned char byte);
 extern void synth(float *out, int numSamples);
+extern void apuFrameHalfClock();
+extern void setFrameCounterEnable(unsigned char en);
+extern void setFrameCounterPeriod(unsigned char bit);
 
 unsigned char memory[65536];
 
@@ -641,30 +647,28 @@ void writeMemory(int addr, unsigned char byte){
     else if(addr == 0x4000){
         setVolume(0, byte & 0x0f);
         setDutyCycle(0, byte >> 6);
+        setLoop(0, (byte >> 5) & 1);
+        setConstantVolume(0, (byte >> 4) & 1);
     }
     else if(addr == 0x4002){
         setTimerLow(0, byte);
-        //printf("set timer period to byte=%u\n", byte);
-        //setFrequency(0, 1789773.0 / (16.0 * (byte + 1)));
     }
     else if(addr == 0x4003){
         setTimerHigh(0, byte & 7);
-        //printf("set timer period to byte=%u\n", byte);
-        //setFrequency(0, 1789773.0 / (16.0 * (byte + 1)));
+        setLengthCounter(0, byte >> 3);
     }
     else if(addr == 0x4004){
         setVolume(1, byte & 0x0f);
         setDutyCycle(1, byte >> 6);
+        setLoop(1, (byte >> 5) & 1);
+        setConstantVolume(1, (byte >> 4) & 1);
     }
     else if(addr == 0x4006){
         setTimerLow(1, byte);
-        //printf("set timer period to byte=%u\n", byte);
-        //setFrequency(1, 1789773.0 / (16.0 * (byte + 1)));
     }
     else if(addr == 0x4007){
         setTimerHigh(1, byte & 7);
-        //printf("set timer period to byte=%u\n", byte);
-        //setFrequency(1, 1789773.0 / (16.0 * (byte + 1)));
+        setLengthCounter(1, byte >> 3);
     }
     else if(addr >= 0x4000 && addr <= 0x4015){
         //printf("write %02x to %04x (sound chip)\n", byte, addr);
@@ -676,6 +680,7 @@ void writeMemory(int addr, unsigned char byte){
         gamepadShiftRegister = packGamepad();
     }
     else if(addr == 0x4017){
+        setFrameCounterPeriod(byte >> 7);
         //printf("write %02x to $4017 (apu frame counter)\n", byte);
     }
     else if(addr >= 0x4018 && addr <= 0x401f){
@@ -1908,6 +1913,7 @@ void fetchSlice(int line, int coarseX){
 int nmiComing = 0;
 int nmiHappening = 0;
 int cpuDots = 1;
+int triplet = 3;
 int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
 
     if(dmaFlag){
@@ -1977,6 +1983,14 @@ int stepPPU(){ // outputs 1 dot, return 1 if instruction completed
     if(dot == oam[3] && scanline - 1 == oam[0] + 5 && /* sprite0 and bg not transparent */ 1){
         ppuStatus.spriteZeroHit = 1;
     }
+
+
+    triplet--;
+    if(triplet == 0){
+        triplet = 3;
+        apuFrameHalfClock();
+    }
+
 
     // make 1 dots of progress on CPU
     cpuDots--;
