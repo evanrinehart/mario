@@ -2165,6 +2165,18 @@ void AudioCb(void *buffer, unsigned int numWanted){
 
 int main(){
 
+    unsigned char a1 = 0, a0 = 4;
+    unsigned char b = 1;
+    
+    for(int i = 0; i < 10; i++){
+        unsigned char c0 = sbc(a0, b, 1, &regs.P);
+        unsigned char c1 = sbc(a1, 0, regs.P.carry, &regs.P);
+        printf("a1=%u a0=%u - %u = %u %u\n", a1, a0, b, c1, c0);
+        a1 = c1;
+        a0 = c0;
+    }
+
+
     InitAudioDevice();
     if(IsAudioDeviceReady() == 0){
         printf("raylib: audio not ready\n");
@@ -2409,7 +2421,21 @@ int main(){
         DrawText(TextFormat("FrictionAdderLow = %u", memory[0x702]), 2, 100+10*20, 20, WHITE);
         DrawText(TextFormat("Player_X_MoveForce = %d", memory[0x705]), 2, 100+11*20, 20, WHITE);
 
+        
 
+        unsigned char speedHigh = memory[0x57];
+        unsigned char speedLow = memory[0x705];
+        unsigned char fricHigh = memory[0x701];
+        unsigned char fricLow = memory[0x702];
+
+        int speed = (speedHigh << 8) | speedLow;
+        if(speed > 32767) speed = speed - 65536;
+        
+        double spd = speed / 256.0;
+        double fric = fricHigh + (fricLow / 256.0);
+
+        DrawText(TextFormat("speed = %lf", spd), 2, 100+12*20, 20, WHITE);
+        DrawText(TextFormat("frict = %lf", fric), 2, 100+13*20, 20, WHITE);
 
         EndDrawing();
 
