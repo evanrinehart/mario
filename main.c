@@ -13,17 +13,16 @@
 #include <colors.h>
 
 extern void test(void);
+extern void setEnable(int ch, unsigned char en);
 extern void setVolume(int ch, unsigned char vol);
 extern void setDutyCycle(int ch, unsigned char d);
-extern void setLoop(int ch, unsigned char l);
-extern void setConstantVolume(int ch, unsigned char c);
+extern void setEnvelope(int ch, unsigned char byte);
 extern void setLengthCounter(int ch, unsigned char n);
 //extern void setFrequency(int ch, float f);
 extern void setTimerLow(int ch, unsigned char byte);
 extern void setTimerHigh(int ch, unsigned char byte);
 extern void synth(float *out, int numSamples);
 extern void apuFrameHalfClock();
-extern void setFrameCounterEnable(unsigned char en);
 extern void setFrameCounterPeriod(unsigned char bit);
 
 unsigned char memory[65536];
@@ -645,10 +644,8 @@ void writeMemory(int addr, unsigned char byte){
         // the data is transferred to OAM starting at the current OAM ADDR
     }
     else if(addr == 0x4000){
-        setVolume(0, byte & 0x0f);
+        setEnvelope(0, byte & 0x3f);
         setDutyCycle(0, byte >> 6);
-        setLoop(0, (byte >> 5) & 1);
-        setConstantVolume(0, (byte >> 4) & 1);
     }
     else if(addr == 0x4002){
         setTimerLow(0, byte);
@@ -658,10 +655,8 @@ void writeMemory(int addr, unsigned char byte){
         setLengthCounter(0, byte >> 3);
     }
     else if(addr == 0x4004){
-        setVolume(1, byte & 0x0f);
+        setEnvelope(1, byte & 0x3f);
         setDutyCycle(1, byte >> 6);
-        setLoop(1, (byte >> 5) & 1);
-        setConstantVolume(1, (byte >> 4) & 1);
     }
     else if(addr == 0x4006){
         setTimerLow(1, byte);
@@ -670,9 +665,9 @@ void writeMemory(int addr, unsigned char byte){
         setTimerHigh(1, byte & 7);
         setLengthCounter(1, byte >> 3);
     }
-    else if(addr >= 0x4000 && addr <= 0x4015){
-        //printf("write %02x to %04x (sound chip)\n", byte, addr);
-        // TODO
+    else if(addr == 0x4015){
+        setEnable(0, byte & 1);
+        setEnable(1, (byte >> 1) & 1);
     }
     else if(addr == 0x4016){
         //printf("write %02x to $4016 (joystick strobe)\n", byte);

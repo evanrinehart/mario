@@ -51,6 +51,8 @@ int peekAudioEvent(struct APUEvent *e, float *time){
 
 
 struct SquareWave {
+    int enable;
+
     float phase;
     float dt;
     float volume;
@@ -60,11 +62,58 @@ struct SquareWave {
     unsigned char duty;//0=12.5% 1=25% 2=50% 3=25% negated
     unsigned char loop; // if 0, stop when length counter reaches zero
     unsigned char constant; // if 0, decreasing envelope will be used for volume
+
+    unsigned char sweepEnable;
+    unsigned char sweepPeriod;
+    unsigned char sweepNegate;
+    unsigned char sweepShift;
+    unsigned char sweepTarget;
+    unsigned char sweepCounter;
+
+    // envelope bits and bobs, some of them
+    unsigned char envStart;
+    unsigned char envParam;
+    unsigned char envCounter;
+    unsigned char envLevel;
 };
 
 struct SquareWave sqr[2] =
-    {{0.0, 220.0/44100.0, 0.0, 7, 255, 2},
-     {0.0, 220.0/44100.0, 0.0, 7, 255, 1}};
+    {{0, 0.0, 220.0/44100.0, 0.0, 7, 255, 2},
+     {0, 0.0, 220.0/44100.0, 0.0, 7, 255, 1}};
+
+//void clockSweepUnit(struct SquareWave * g){
+//}
+
+void clockEnvelope(struct SquareWave * g){
+    if(g->envStart){
+        g->envStart = 0;
+        g->envLevel = 15;
+        g->envCounter = g->envParam;
+    }
+    else{
+        g->envCounter--;
+        if(g->envCounter == 0){
+            g->envCounter = g->envParam;
+            if(g->envLevel == 0){
+                if(g->loop) g->envLevel = 15;
+                // else nothing happens and level remains zero
+            }
+            else{
+                g->envLevel--;
+            }
+        }
+    }
+
+    if(g->constant){
+        //printf("clockenv, constant volume = %02x\n", g->envParam);
+        g->volume = ((float)g->envParam) / 15.0;
+    }
+    else{
+        //printf("clockenv, decay volume = %02x\n", g->envLevel);
+        g->volume = ((float)g->envLevel) / 15.0;
+    }
+
+}
 
 // 0 to 1, repeats,
 float phase = 0.0;
@@ -95,8 +144,12 @@ float squareWave(float dt, float t){
 
 float sqrGenerator(struct SquareWave *g){
     float out = 0.0;
+    if(g->enable == 0) return 0.0;
     if(g->volume == 0) return 0.0;
     if(g->length == 0) return 0.0;
+    //if(g->sweepPeriod < 8) return 0.0;
+    //if(g->sweepTarget > 0x7ff) return 0.0;
+
     if(g->duty == 2){ // 50% duty cycle
         out += 0.1 * g->volume * squareWave(g->dt, g->phase);
         g->phase += g->dt;
@@ -118,6 +171,13 @@ float sqrGenerator(struct SquareWave *g){
     return out;
 }
 
+void setEnable(int ch, unsigned char en){
+    sqr[ch].enable = en;
+    if(en == 0){
+        sqr[ch].length = 0;
+    }
+}
+
 void setTimerLow(int ch, unsigned char byte){
     sqr[ch].timerLow = byte;
     int period = (sqr[ch].timerHigh << 8) | sqr[ch].timerLow;
@@ -132,21 +192,24 @@ void setTimerHigh(int ch, unsigned char byte){
     sqr[ch].dt = f / 44100.0;
 }
 
-void setVolume(int ch, unsigned char vol){
-    float amplitude = (1.0 / 16.0) * (float)vol;
-    sqr[ch].volume = amplitude;
+void setEnvelope(int ch, unsigned char byte){
+    unsigned char lownib = byte & 0x0f;
+
+    sqr[ch].envParam = lownib;
+    sqr[ch].loop = (byte >> 5) & 1;
+    sqr[ch].constant = (byte >> 4) & 1;
+
+    if(sqr[ch].constant){
+        sqr[ch].volume = ((float)lownib) / 15.0;
+    }
+    else{
+        sqr[ch].volume = ((float)lownib) / 15.0;
+    }
+
 }
 
 void setDutyCycle(int ch, unsigned char d){
     sqr[ch].duty = d;
-}
-
-void setLoop(int ch, unsigned char l){
-    sqr[ch].loop = l;
-}
-
-void setConstantVolume(int ch, unsigned char c){
-    sqr[ch].constant = c;
 }
 
 unsigned char length_table[32] =
@@ -158,18 +221,26 @@ unsigned char length_table[32] =
     };
 
 void setLengthCounter(int ch, unsigned char n){
-    sqr[ch].length = length_table[n];
+    if(sqr[ch].enable == 0) return;
+    if(sqr[ch].enable){
+        sqr[ch].length = length_table[n];
+        sqr[ch].envStart = 1;
+    }
+}
+
+void setSweep(int ch, unsigned char byte){
+    sqr[ch].sweepEnable = byte >> 7;
+    sqr[ch].sweepPeriod = (byte >> 4) & 7;
+    sqr[ch].sweepNegate = (byte >> 3) & 1;
+    sqr[ch].sweepShift = byte & 7;
 }
 
 // this frame counter has nothing to do with video frames
-int frameCounter = 2*14915;
-int frameCounterEnable = 0;
+int frameCounter = 0;
 int frameCounterPeriod = 2*14915;
 int frameCounterMode = 0;
 //int frameCounter = 18641;
 void apuFrameHalfClock(){
-    if(frameCounterEnable == 0) return;
-
     frameCounter++;
 
     int wholeFrame = frameCounter / 2;
@@ -177,6 +248,10 @@ void apuFrameHalfClock(){
 
     if(wholeFrame == 3728 && halfFrame){
         // envelope, linear counter clock
+        clockEnvelope(&sqr[0]);
+        clockEnvelope(&sqr[1]);
+
+        //printf("sqr0 volume = %f, length = %u\n", sqr[0].volume, sqr[0].length);
     }
 
     if(wholeFrame == 7456 && halfFrame){
@@ -185,10 +260,14 @@ void apuFrameHalfClock(){
 
         if(sqr[0].length > 0 && sqr[0].loop == 0){ sqr[0].length--; }
         if(sqr[1].length > 0 && sqr[1].loop == 0){ sqr[1].length--; }
+        clockEnvelope(&sqr[0]);
+        clockEnvelope(&sqr[1]);
     }
 
     if(wholeFrame == 11185 && halfFrame){
         // envelope, linear counter clock
+        clockEnvelope(&sqr[0]);
+        clockEnvelope(&sqr[1]);
     }
 
     if(
@@ -200,22 +279,17 @@ void apuFrameHalfClock(){
         // length counter, sweep units
         if(sqr[0].length > 0 && sqr[0].loop == 0){ sqr[0].length--; }
         if(sqr[1].length > 0 && sqr[1].loop == 0){ sqr[1].length--; }
+        clockEnvelope(&sqr[0]);
+        clockEnvelope(&sqr[1]);
     }
 
     if(frameCounter == frameCounterPeriod) frameCounter = 0;
 }
 
-void setFrameCounterEnable(int en){
-    frameCounterEnable = en;
-    if(en == 0){
-        sqr[0].length = 0;
-        sqr[1].length = 0;
-    }
-}
-
 void setFrameCounterPeriod(unsigned char bit){
     if(bit == 0) frameCounterPeriod = 14915;
     if(bit == 1) frameCounterPeriod = 18641;
+    frameCounter = 0;
 }
 
 
@@ -310,7 +384,7 @@ void clockTriangleGenerator(struct TriangleGenerator *g){
 
 void test(){
     for(int i = 0; i < 50; i++){
-        printf("counter = %02x, output = %02x\n", tri.counter, tri.output);
+        //printf("counter = %02x, output = %02x\n", tri.counter, tri.output);
         clockTriangleGenerator(&tri);
     }
 }
