@@ -783,8 +783,12 @@ void stepCPU(){
     }
     */
 
-    if(regs.PC == 0xb5f7 || regs.PC == 0xb615){
+    if(0){
+    //if(regs.PC == 0xb620){
+    //if(regs.PC == 0xb3b0){
+    //if(regs.PC == 0xb620 || regs.PC == 0xb5f7 || regs.PC == 0xb615){
         regs.PC += size;
+        printf("b620 interdicted\n");
         return;
     }
 
@@ -2403,7 +2407,7 @@ int main(){
         DrawText(TextFormat("RunningSpeed = %u", memory[0x703]), 2, 100+8*20, 20, WHITE);
         DrawText(TextFormat("FrictionAdderHigh = %u", memory[0x701]), 2, 100+9*20, 20, WHITE);
         DrawText(TextFormat("FrictionAdderLow = %u", memory[0x702]), 2, 100+10*20, 20, WHITE);
-        DrawText(TextFormat("Player_X_Scroll = %d", UNCOMPLEMENT(memory[0x6ff])), 2, 100+11*20, 20, WHITE);
+        DrawText(TextFormat("Player_X_MoveForce = %d", memory[0x705]), 2, 100+11*20, 20, WHITE);
 
 
 
