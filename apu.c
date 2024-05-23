@@ -50,6 +50,20 @@ int peekAudioEvent(struct APUEvent *e, float *time){
 } 
 
 
+
+struct TriangleWave {
+    int enable; // 4015
+
+    float phase;
+    float dt;
+    unsigned char timerHigh; // 400A
+    unsigned char timerLow;  // 400B
+
+    int length; // 400B
+};
+
+
+
 struct SquareWave {
     int enable;
 
@@ -119,8 +133,8 @@ void clockSweepUnit(struct SquareWave * g){
         g->sweepCounter--;
     }
 
-    int timer = (g->timerHigh << 8) | g->timerLow;
     if(g->sweepEnable){
+        //int timer = (g->timerHigh << 8) | g->timerLow;
         //printf("sweep %p timer=%04x div=%u targ=%04x shift=%02x neg=%02x mut=%02x\n", g, timer, g->sweepCounter, g->sweepTarget, g->sweepShift, g->sweepNegate, g->sweepMuting);
     }
 

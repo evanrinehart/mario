@@ -2192,7 +2192,7 @@ int main(){
     int showPalettes = 0;
     int showMemory = 0;
 
-    int key = 0;
+    //int key = 0;
 
     while(!WindowShouldClose()) {
 
