@@ -63,26 +63,69 @@ struct SquareWave {
     unsigned char loop; // if 0, stop when length counter reaches zero
     unsigned char constant; // if 0, decreasing envelope will be used for volume
 
-    unsigned char sweepEnable;
-    unsigned char sweepPeriod;
-    unsigned char sweepNegate;
-    unsigned char sweepShift;
-    unsigned char sweepTarget;
-    unsigned char sweepCounter;
-
     // envelope bits and bobs, some of them
     unsigned char envStart;
     unsigned char envParam;
     unsigned char envCounter;
     unsigned char envLevel;
+
+    // sweep unit
+    unsigned char sweepEnable;
+    unsigned char sweepCounter;
+    unsigned char sweepReload;
+    unsigned char sweepPeriod;
+    int sweepTarget;
+    unsigned char sweepShift;
+    unsigned char sweepNegate;
+    unsigned char sweepMuting;
+
 };
 
 struct SquareWave sqr[2] =
     {{0, 0.0, 220.0/44100.0, 0.0, 7, 255, 2},
      {0, 0.0, 220.0/44100.0, 0.0, 7, 255, 1}};
 
-//void clockSweepUnit(struct SquareWave * g){
-//}
+
+void updateSweepTarget(struct SquareWave * g){
+    int timer  = (g->timerHigh << 8) | g->timerLow;
+    int shift  = g->sweepShift;
+    int amount = timer >> shift;
+    int target = g->sweepNegate ? timer - amount : timer + amount;
+    if(target < 0) target = 0;
+    g->sweepTarget = target;
+    //printf("update timer=%04x shift=%02x neg=%02x amount=%d target=%04x\n", timer, shift, g->sweepNegate, amount, target);
+    g->sweepMuting = timer < 8 || g->sweepTarget > 0x7ff;
+}
+
+void clockSweepUnit(struct SquareWave * g){
+
+    if(g->sweepEnable && g->sweepCounter == 0 && g->sweepShift > 0){
+        if(g->sweepMuting == 0){
+            int period = g->sweepTarget;
+            g->timerHigh = (period >> 8);
+            g->timerLow  = period & 0xff;
+            //printf("sweep triggered, target = %04x timerH = %02x timerL = %02x\n", period, g->timerHigh, g->timerLow);
+            float f = 1789773.0 / (16.0 * (period + 1));
+            g->dt = f / 44100.0;
+            updateSweepTarget(g);
+        }
+    }
+
+    if(g->sweepCounter == 0 || g->sweepReload){
+        g->sweepCounter = g->sweepPeriod;
+        g->sweepReload = 0;
+    }
+    else{
+        g->sweepCounter--;
+    }
+
+    int timer = (g->timerHigh << 8) | g->timerLow;
+    if(g->sweepEnable){
+        //printf("sweep %p timer=%04x div=%u targ=%04x shift=%02x neg=%02x mut=%02x\n", g, timer, g->sweepCounter, g->sweepTarget, g->sweepShift, g->sweepNegate, g->sweepMuting);
+    }
+
+
+}
 
 void clockEnvelope(struct SquareWave * g){
     if(g->envStart){
@@ -147,8 +190,7 @@ float sqrGenerator(struct SquareWave *g){
     if(g->enable == 0) return 0.0;
     if(g->volume == 0) return 0.0;
     if(g->length == 0) return 0.0;
-    //if(g->sweepPeriod < 8) return 0.0;
-    //if(g->sweepTarget > 0x7ff) return 0.0;
+    if(g->sweepMuting) return 0.0;
 
     if(g->duty == 2){ // 50% duty cycle
         out += 0.1 * g->volume * squareWave(g->dt, g->phase);
@@ -183,6 +225,7 @@ void setTimerLow(int ch, unsigned char byte){
     int period = (sqr[ch].timerHigh << 8) | sqr[ch].timerLow;
     float f = 1789773.0 / (16.0 * (period + 1));
     sqr[ch].dt = f / 44100.0;
+    updateSweepTarget(&sqr[ch]);
 }
 
 void setTimerHigh(int ch, unsigned char byte){
@@ -190,6 +233,7 @@ void setTimerHigh(int ch, unsigned char byte){
     int period = (sqr[ch].timerHigh << 8) | sqr[ch].timerLow;
     float f = 1789773.0 / (16.0 * (period + 1));
     sqr[ch].dt = f / 44100.0;
+    updateSweepTarget(&sqr[ch]);
 }
 
 void setEnvelope(int ch, unsigned char byte){
@@ -229,10 +273,13 @@ void setLengthCounter(int ch, unsigned char n){
 }
 
 void setSweep(int ch, unsigned char byte){
+    //printf("set sweep ch=%d byte=%02x\n", ch, byte);
     sqr[ch].sweepEnable = byte >> 7;
     sqr[ch].sweepPeriod = (byte >> 4) & 7;
     sqr[ch].sweepNegate = (byte >> 3) & 1;
-    sqr[ch].sweepShift = byte & 7;
+    sqr[ch].sweepShift  = byte & 7;
+    sqr[ch].sweepReload = 1;
+    updateSweepTarget(&sqr[ch]);
 }
 
 // this frame counter has nothing to do with video frames
@@ -262,6 +309,8 @@ void apuFrameHalfClock(){
         if(sqr[1].length > 0 && sqr[1].loop == 0){ sqr[1].length--; }
         clockEnvelope(&sqr[0]);
         clockEnvelope(&sqr[1]);
+        clockSweepUnit(&sqr[0]);
+        clockSweepUnit(&sqr[1]);
     }
 
     if(wholeFrame == 11185 && halfFrame){
@@ -281,6 +330,8 @@ void apuFrameHalfClock(){
         if(sqr[1].length > 0 && sqr[1].loop == 0){ sqr[1].length--; }
         clockEnvelope(&sqr[0]);
         clockEnvelope(&sqr[1]);
+        clockSweepUnit(&sqr[0]);
+        clockSweepUnit(&sqr[1]);
     }
 
     if(frameCounter == frameCounterPeriod) frameCounter = 0;
