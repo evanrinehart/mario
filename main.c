@@ -783,8 +783,14 @@ void stepCPU(){
     }
     */
 
+    if(regs.PC == 0xb5f7 || regs.PC == 0xb615){
+        regs.PC += size;
+        return;
+    }
+
     remember(regs.PC);
     regs.PC += size;
+
 
     switch(ins->opcode){
         case 0x78: // SEI
@@ -2382,6 +2388,22 @@ int main(){
         if(showPalettes)
             drawPalettes(0,0);
 
+        // SprObject_X_Pos    $86
+        // SprObject_X_Speed  $57
+        // Player_XSpeedAbsolute $700
+
+        DrawText(TextFormat("Player X Pos = %u", memory[0x86]), 2, 100+2, 20, WHITE);
+        DrawText(TextFormat("Player X Spd = %d", UNCOMPLEMENT(memory[0x57])), 2, 100+20, 20, WHITE);
+        DrawText(TextFormat("XSpeedAbsolute = %u", memory[0x700]), 2, 100+20+20, 20, WHITE);
+        DrawText(TextFormat("MaxLeftSpeed = %d", UNCOMPLEMENT(memory[0x450])), 2, 100+3*20, 20, WHITE);
+        DrawText(TextFormat("MaxRightSpeed = %u", memory[0x456]), 2, 100+4*20, 20, WHITE);
+        DrawText(TextFormat("PlayerFacingDir = %u", memory[0x33]), 2, 100+5*20, 20, WHITE);
+        DrawText(TextFormat("PlayerMovingDir = %u", memory[0x45]), 2, 100+6*20, 20, WHITE);
+        DrawText(TextFormat("RunningTimer = %u", memory[0x783]), 2, 100+7*20, 20, WHITE);
+        DrawText(TextFormat("RunningSpeed = %u", memory[0x703]), 2, 100+8*20, 20, WHITE);
+        DrawText(TextFormat("FrictionAdderHigh = %u", memory[0x701]), 2, 100+9*20, 20, WHITE);
+        DrawText(TextFormat("FrictionAdderLow = %u", memory[0x702]), 2, 100+10*20, 20, WHITE);
+        DrawText(TextFormat("Player_X_Scroll = %d", UNCOMPLEMENT(memory[0x6ff])), 2, 100+11*20, 20, WHITE);
 
 
 
