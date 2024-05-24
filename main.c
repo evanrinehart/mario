@@ -790,11 +790,11 @@ void stepCPU(){
     //if(regs.PC == 0xb620){
     //if(regs.PC == 0xb620 || regs.PC == 0xb5f7 || regs.PC == 0xb615){
     //if(regs.PC == 0xb3b0){
-    //if(regs.PC == 0x){
+    if(regs.PC == 0xbf09){
         //regs.PC += size;
-        //printf("frameNo=%d call to impose friction\n", frameNo);
+        //printf("frameNo=%d call to move player\n", frameNo);
 //        return;
-    //}
+    }
 
     remember(regs.PC);
     regs.PC += size;
@@ -2401,34 +2401,36 @@ int main(){
         // SprObject_X_Speed  $57
         // Player_XSpeedAbsolute $700
 
-        DrawText(TextFormat("Player X Pos = %u", memory[0x86]), 2, 100+2, 20, WHITE);
-        DrawText(TextFormat("Player X Spd = %d", UNCOMPLEMENT(memory[0x57])), 2, 100+20, 20, WHITE);
-        DrawText(TextFormat("XSpeedAbsolute = %u", memory[0x700]), 2, 100+20+20, 20, WHITE);
-        DrawText(TextFormat("MaxLeftSpeed = %d", UNCOMPLEMENT(memory[0x450])), 2, 100+3*20, 20, WHITE);
-        DrawText(TextFormat("MaxRightSpeed = %u", memory[0x456]), 2, 100+4*20, 20, WHITE);
+        DrawText(TextFormat("Player_PageLoc = %u", memory[0x6d]), 2, 100+2*20, 20, WHITE);
+        DrawText(TextFormat("Player X Pos = %u", memory[0x86]), 2, 100+3*20, 20, WHITE);
+
+        DrawText(TextFormat("Player_X_MoveForce = %u", memory[0x705]), 2, 100+4*20, 20, WHITE);
+
+        DrawText(TextFormat("Player X Spd = %d", UNCOMPLEMENT(memory[0x57])), 2, 100+5*20, 20, WHITE);
+
+        unsigned char fricHigh = memory[0x701];
+        unsigned char fricLow = memory[0x702];
+        double fric = fricHigh + (fricLow / 256.0);
+        DrawText(TextFormat("frict = %lf", fric), 2, 100+6*20, 20, WHITE);
+
+        DrawText(TextFormat("FrictionAdderHigh = %u", memory[0x701]), 2, 100+7*20, 20, WHITE);
+        DrawText(TextFormat("FrictionAdderLow = %u", memory[0x702]), 2, 100+8*20, 20, WHITE);
+
+        DrawText(TextFormat("Player_X_Scroll = %d", UNCOMPLEMENT(memory[0x6ff])), 2, 100+9*20, 20, WHITE);
+
+
+        DrawText(TextFormat("MaxLeftSpeed = %d", UNCOMPLEMENT(memory[0x450])), 2, 100+10*20, 20, WHITE);
+        DrawText(TextFormat("MaxRightSpeed = %u", memory[0x456]), 2, 100+11*20, 20, WHITE);
+/*
         DrawText(TextFormat("PlayerFacingDir = %u", memory[0x33]), 2, 100+5*20, 20, WHITE);
         DrawText(TextFormat("PlayerMovingDir = %u", memory[0x45]), 2, 100+6*20, 20, WHITE);
         DrawText(TextFormat("RunningTimer = %u", memory[0x783]), 2, 100+7*20, 20, WHITE);
         DrawText(TextFormat("RunningSpeed = %u", memory[0x703]), 2, 100+8*20, 20, WHITE);
-        DrawText(TextFormat("FrictionAdderHigh = %u", memory[0x701]), 2, 100+9*20, 20, WHITE);
-        DrawText(TextFormat("FrictionAdderLow = %u", memory[0x702]), 2, 100+10*20, 20, WHITE);
-        DrawText(TextFormat("Player_X_MoveForce = %d", memory[0x705]), 2, 100+11*20, 20, WHITE);
+*/
 
         
 
-        unsigned char speedHigh = memory[0x57];
-        unsigned char speedLow = memory[0x705];
-        unsigned char fricHigh = memory[0x701];
-        unsigned char fricLow = memory[0x702];
 
-        int speed = (speedHigh << 8) | speedLow;
-        if(speed > 32767) speed = speed - 65536;
-        
-        double spd = speed / 256.0;
-        double fric = fricHigh + (fricLow / 256.0);
-
-        DrawText(TextFormat("speed = %lf", spd), 2, 100+12*20, 20, WHITE);
-        DrawText(TextFormat("frict = %lf", fric), 2, 100+13*20, 20, WHITE);
 
         EndDrawing();
 
