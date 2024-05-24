@@ -252,6 +252,7 @@ struct GamepadBits gamepad2;
 unsigned char gamepadShiftRegister1 = 0;
 unsigned char gamepadShiftRegister2 = 0;
 void pollGamepad(){
+
     if(IsGamepadAvailable(0)){
 
         gamepad1.A = IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
@@ -312,14 +313,14 @@ void pollGamepad(){
 
     }
     else{
-        gamepad1.A = 0;
-        gamepad1.B = 0;
-        gamepad1.select = 0;
-        gamepad1.start = 0;
-        gamepad1.up = 0;
-        gamepad1.down = 0;
-        gamepad1.left = 0;
-        gamepad1.right = 0;
+        gamepad2.A = 0;
+        gamepad2.B = 0;
+        gamepad2.select = 0;
+        gamepad2.start = 0;
+        gamepad2.up = 0;
+        gamepad2.down = 0;
+        gamepad2.left = 0;
+        gamepad2.right = 0;
     }
 
 }
