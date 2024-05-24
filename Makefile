@@ -1,5 +1,5 @@
 mario: main.c apu.c rom.h instructions.h colors.h
-	gcc -o mario -Wall -I. -I raylib/src main.c apu.c raylib/src/libraylib.a -lm
+	gcc -o mario -Wall -I. -I raylib/src main.c apu.c raylib/src/libraylib.a -lm -lpthread
 
 headerize: headerize.c
 	gcc -o headerize -Wall headerize.c

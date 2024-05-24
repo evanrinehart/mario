@@ -3,7 +3,7 @@
 #include <ctype.h>
 
 void dumpRom(const char *path){
-    FILE* file = fopen(path, "r");
+    FILE* file = fopen(path, "rb");
     if(file==NULL){
         printf("failed to open rom\n");
         exit(1);
