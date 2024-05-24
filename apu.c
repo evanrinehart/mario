@@ -463,12 +463,14 @@ void test(){
 // in 1/44100 seconds, the CPU cycles 40.4595 times
 void synth(float *out, int numSamples){
 
-    if(!sqr[0].volume && !sqr[1].volume){
+    
+
+//    if(!sqr[0].volume && !sqr[1].volume){
         for(int i = 0; i < numSamples; i++){
             out[i] = 0.0;
         }
         return;
-    }
+//    }
 
     for(int i = 0; i < numSamples; i++){
         out[i] = 0.0;

@@ -26,6 +26,9 @@ extern void synth(float *out, int numSamples);
 extern void apuFrameHalfClock();
 extern void setFrameCounterPeriod(unsigned char bit);
 
+// 01900
+
+
 unsigned char memory[65536];
 
 int timeDilation = 1;
@@ -783,14 +786,15 @@ void stepCPU(){
     }
     */
 
-    if(0){
+    //if(0){
     //if(regs.PC == 0xb620){
-    //if(regs.PC == 0xb3b0){
     //if(regs.PC == 0xb620 || regs.PC == 0xb5f7 || regs.PC == 0xb615){
-        regs.PC += size;
-        printf("b620 interdicted\n");
-        return;
-    }
+    //if(regs.PC == 0xb3b0){
+    //if(regs.PC == 0x){
+        //regs.PC += size;
+        //printf("frameNo=%d call to impose friction\n", frameNo);
+//        return;
+    //}
 
     remember(regs.PC);
     regs.PC += size;
@@ -2164,17 +2168,6 @@ void AudioCb(void *buffer, unsigned int numWanted){
 
 
 int main(){
-
-    unsigned char a1 = 0, a0 = 4;
-    unsigned char b = 1;
-    
-    for(int i = 0; i < 10; i++){
-        unsigned char c0 = sbc(a0, b, 1, &regs.P);
-        unsigned char c1 = sbc(a1, 0, regs.P.carry, &regs.P);
-        printf("a1=%u a0=%u - %u = %u %u\n", a1, a0, b, c1, c0);
-        a1 = c1;
-        a0 = c0;
-    }
 
 
     InitAudioDevice();
