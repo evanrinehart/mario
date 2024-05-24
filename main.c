@@ -255,26 +255,36 @@ void pollGamepad(){
 
     if(IsGamepadAvailable(0)){
 
-        gamepad1.A = IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
-        gamepad1.B = IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT);
+        gamepad1.A =
+            IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN) ||
+            IsKeyDown(KEY_K);
+        gamepad1.B =
+            IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT) ||
+            IsKeyDown(KEY_J);
         gamepad1.select =
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE_LEFT) ||
-            IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_TRIGGER_2);
+            IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_TRIGGER_1) ||
+            IsKeyDown(KEY_Q);
         gamepad1.start =
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE_RIGHT) ||
-            IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE);
+            IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE) ||
+            IsKeyDown(KEY_E);
         gamepad1.up =
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_UP) ||
-            GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y) > 0.5;
+            GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y) > 0.5 ||
+            IsKeyDown(KEY_W);
         gamepad1.down =
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN) ||
-            GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y) < -0.5;
+            GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y) < -0.5 ||
+            IsKeyDown(KEY_S);
         gamepad1.left =
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT) ||
-            GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X) < -0.5;
+            GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X) < -0.5 ||
+            IsKeyDown(KEY_A);
         gamepad1.right =
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT) ||
-            GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X) > 0.5;
+            GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X) > 0.5 ||
+            IsKeyDown(KEY_D);
 
     }
     else{
@@ -2122,6 +2132,11 @@ int main(){
     int showMemory = 0;
 
     //int key = 0;
+
+
+
+    SetGamepadMappings("03000000790000004e95000011010000,DragonRise Inc. NGC USB Gamepad,a:b1,b:b0,dpdown:b14,dpleft:b15,dpright:b13,dpup:b12,leftshoulder:b4,lefttrigger:a3,leftx:a0,lefty:a1~,rightshoulder:b5,righttrigger:a4,rightx:a5,righty:a2~,start:b9,x:b2,y:b3,platform:Linux,");
+
 
     while(!WindowShouldClose()) {
 
