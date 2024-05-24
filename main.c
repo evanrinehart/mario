@@ -320,7 +320,6 @@ void write2000(unsigned char byte) {
         case 2: ppuNameBase = 0x2800; break;
         case 3: ppuNameBase = 0x2c00; break;
     }
-    //printf("NameBase set to %04x\n", ppuNameBase);
 }
 
 void write2001(unsigned char byte) {
@@ -511,20 +510,14 @@ unsigned char readMemory(int addr){
         return 0;
     }
     else if(addr == 0x2002){
-        //printf("read from $%04x (PPU status)\n", addr);
         return read2002();
     }
     else if(addr == 0x2004){
-        //printf("read from $2004 (OAM data)\n");
         return oam[oamAddr];
     }
     else if(addr == 0x2007){
         byte = ppuDataReadBuffer;
-//        if(ppuAddr == 0x3f10)
-//            ppuDataReadBuffer = ppuMemory[0x3f00];
-//        else
-            ppuDataReadBuffer = ppuMemory[ppuAddr];
-        //printf("read %02x (%02x) from $2007 (PPU data) (ppuAddr=%04x\n", ppuDataReadBuffer, byte, ppuAddr);
+        ppuDataReadBuffer = ppuMemory[ppuAddr];
 
         if(ppuCtrl.vramAddressIncrement)
             ppuAddr = (ppuAddr + 32) & VRAM_MAX;
@@ -533,25 +526,26 @@ unsigned char readMemory(int addr){
         return byte;
     }
     else if(addr >= 0x4000 && addr <= 0x4014){
-        printf("read from $%04x\n", addr);
+        printf("read from $%04x (sound chip, write only)\n", addr);
         exit(1);
     }
     else if(addr == 0x4015){
+        //TODO
         //printf("read from $%04x (sound channels and IRQ status)\n", addr);
         return 0;
     }
     else if(addr == 0x4016){
+        //TODO gamepad support
         byte = gamepadShiftRegister & 1;
         gamepadShiftRegister >>= 1;
-        //printf("read from $%04x (joystick 1 data)\n", addr);
         return byte;
     }
     else if(addr == 0x4017){
-        //printf("read from $%04x (joystick 2 data)\n", addr);
+        //TODO gamepad support
+        //player 2
         return 0;
     }
     else if(addr >= 0x4018 && addr <= 0x401f){
-        //printf("read from $%04x (disabled functionality)\n", addr);
         return 0;
     }
     else return memory[addr];
@@ -559,39 +553,30 @@ unsigned char readMemory(int addr){
 
 void writeMemory(int addr, unsigned char byte){
     if(addr == 0x2000) {
-        //printf("frame=%d line=%d dot=%d PC=%04x write %02x to %04x (PPU ctrl)\n", frameNo, scanline, dot, regs.PC, byte, addr);
         write2000(byte);
     }
     else if(addr == 0x2001){
-        //printf("write %02x to %04x (PPU mask)\n", byte, addr);
         write2001(byte);
     }
     else if(addr == 0x2003){
-        //printf("write %02x to $2003 (OAM addr)\n", byte);
         oamAddr = byte;
     }
     else if(addr == 0x2004){
-        // it's probably best to ignore writes to this register unless in blanking
-        //printf("write %02x to $2004 (OAM data)\n", byte);
         oam[oamAddr] = byte;
         oamAddr = (oamAddr + 1) & 0xff;
     }
     else if(addr == 0x2005){
         if(ppuW == 0){
-            //printf("frame=%d line=%d dot=%d PC=%04x write %02x to $2005 (PPU scroll X)\n", frameNo, scanline, dot, regs.PC, byte);
             ppuScrollX = byte;
             ppuFineX = byte & 7;
             ppuW = !ppuW;
         }
         else if(ppuW == 1){
-            //printf("write %02x to $2005 (PPU scroll Y)\n", byte);
             ppuScrollY = byte;
-            // mario doesn't have vertial scrolling
             ppuW = !ppuW;
         }
     }
     else if(addr == 0x2006){
-        //printf("frame=%d line=%d dot=%d PC=%04x write %02x to $2006 (PPU addr) ", frameNo, scanline, dot, regs.PC, byte);
         if(ppuW == 0){
             ppuAddr = (int)byte << 8;
             ppuW = !ppuW;
@@ -603,10 +588,8 @@ void writeMemory(int addr, unsigned char byte){
             ppuAddr |= byte;
             ppuW = !ppuW;
         }
-        //printf("now ppuAddr = %04x\n", ppuAddr);
     }
     else if(addr == 0x2007){
-        //printf("write %02x to $2007 (PPU data) (addr=%04x)\n", byte, ppuAddr);
         if(ppuAddr < 0x2000){
             printf("PC=%04x WUT attempting to write to CHR ROM.\n", regs.PC);
             debug();
@@ -614,17 +597,27 @@ void writeMemory(int addr, unsigned char byte){
             printf("data = %02x\n", byte);
             exit(1);
         }
-        else if(ppuAddr > 0x3fff){
+        else if(ppuAddr < 0 || ppuAddr > 0x3fff){
             printf("PPUDATA write out of range\n");
             exit(1);
         }
         else{
             if(ppuAddr >= 0x2800 && ppuAddr <= 0x2fff){
-                printf("they tried to use mirroring (%04x)\n", ppuAddr);
+                printf("fixme, they tried to use mirroring (%04x)\n", ppuAddr);
                 exit(1);
             }
-            if(ppuAddr == 0x3f10){ ppuMemory[0x3f00] = byte; }
-            else{ ppuMemory[ppuAddr] = byte; }
+
+            // this one piece of palette memory is mirrored.
+            // actually the 3 "unused" colors are also mirrored,
+            //   but mario doesn't use them.
+            // without this the sky is black
+            if(ppuAddr == 0x3f10){
+                ppuMemory[0x3f00] = byte;
+            }
+            else{
+                ppuMemory[ppuAddr] = byte;
+            }
+
             if(ppuCtrl.vramAddressIncrement)
                 ppuAddr = (ppuAddr + 32) & VRAM_MAX;
             else
@@ -632,7 +625,6 @@ void writeMemory(int addr, unsigned char byte){
         }
     }
     else if(addr == 0x4014){
-        //printf("write %02x to $4014 (OAM DMA)\n", byte);
         int ptr = oamAddr;
         for(int i = 0; i < 256; i++){
             oam[ptr] = memory[0x200 + i];
@@ -640,13 +632,8 @@ void writeMemory(int addr, unsigned char byte){
         }
 
         dmaFlag = 1;
-
-        // TODO
-        // OAM DMA is how sprites in oam are updated
-        // writing to 4014 transfers 256 from $XX00-$XXFF of cpu to OAM.
-        // the CPU is suspended during the transfer. It takes 513 or 514 cycles.
-        // the data is transferred to OAM starting at the current OAM ADDR
     }
+    // write to sound chip controls
     else if(addr == 0x4000){
         setEnvelope(0, byte & 0x3f);
         setDutyCycle(0, byte >> 6);
@@ -680,16 +667,13 @@ void writeMemory(int addr, unsigned char byte){
         setEnable(1, (byte >> 1) & 1);
     }
     else if(addr == 0x4016){
-        //printf("write %02x to $4016 (joystick strobe)\n", byte);
-        //printf("shift register loaded with %02x\n", gamepadShiftRegister);
+        //TODO check player 2
         gamepadShiftRegister = packGamepad();
     }
     else if(addr == 0x4017){
         setFrameCounterPeriod(byte >> 7);
-        //printf("write %02x to $4017 (apu frame counter)\n", byte);
     }
     else if(addr >= 0x4018 && addr <= 0x401f){
-        //printf("write %02x to $%04x, i/o functionality that is disabled\n", byte, addr);
     }
     else if(addr >= 0x4020){
         printf("attempting to write to unmapped memory ($%04x <= $%02x)\n", addr, byte);
@@ -737,11 +721,6 @@ int nextCPUDelay(){
 
 // 7 cycle interrupt sequence, transfer control to NMI vector
 void nmiCPU(){
-    // ignore the incoming instruction (2 cycles)
-    // save 2 byte PC to stack (2 cycles)
-    // push status register on stack (1 cycle)
-    // set I flag and fetch FFFE (1 cycle)
-    // fetch FFFF and update PC (1 cycle)
     memory[0x0100 + regs.S] = regs.PC >> 8;
     regs.S--;
     memory[0x0100 + regs.S] = regs.PC & 0xff;
@@ -750,7 +729,6 @@ void nmiCPU(){
     regs.S--;
     regs.P.interruptDisable = 1;
     regs.PC = vectors.nmi;
-    //printf("NMI executing\n");
 }
 
 // fetch next instruction and execute effects
@@ -767,38 +745,8 @@ void stepCPU(){
     int lower;
     int upper;
 
-    //printf(" pc=%04x %s ", regs.PC, ins->mnemonic);
-
-    //if(regs.PC == 0xb1ba || regs.PC == 0xb1c6){
-    // this comparison leads to resetting the game if mario is too far down
-    //if(regs.PC == 0xb1aa){ printf("comparing %02x and %02x\n", regs.A, memory[7]); }
-    //if(regs.PC == 0xb1b8){ printf("store 6 in GameEngineSubroutine\n"); }
-    //if(regs.PC == 0xdc64){ printf("called PlayerBGCollision. GES = %02x\n", memory[0x0e]); }
-
-    /*
-    if(regs.PC == 0x82c5){
-        printf("82c5 A=%02x lives=%02x\n", regs.A, memory[0x075a]);
-        //cpuFreeze = 1;
-        //printf("OperExecutionTree A=%02x OperMode=%02x Task=%02x\n", regs.A, memory[0x770], memory[0x772]);
-        //printf("%d AutoControlPlayer\n", cycle);
-        //printf("%d BOOM %04x\n", cycle, regs.PC);
-        //printf("bcs ResetTitle (carry = %d)\n", regs.P.carry);
-    }
-    */
-
-    //if(0){
-    //if(regs.PC == 0xb620){
-    //if(regs.PC == 0xb620 || regs.PC == 0xb5f7 || regs.PC == 0xb615){
-    //if(regs.PC == 0xb3b0){
-    if(regs.PC == 0xbf09){
-        //regs.PC += size;
-        //printf("frameNo=%d call to move player\n", frameNo);
-//        return;
-    }
-
     remember(regs.PC);
     regs.PC += size;
-
 
     switch(ins->opcode){
         case 0x78: // SEI
@@ -1543,13 +1491,6 @@ void stepCPU(){
 
         case 0x20: // JSR $8100
             arg21 = (arg2 << 8) | arg1;
-//            printf("S=%02x, JSR from %04x to %04x (%s)\n", regs.S, regs.PC, arg21, locationName(arg21));
-            if(locationName(arg21)[0] == '?'){
-                //printf("unknown location, investigate\n");
-                //exit(1);
-            }
-//if(arg21 == 0x8e19) cpuTimeDilation = 1000;
-
             addr = regs.PC - 1;
             memory[0x0100 + regs.S] = addr >> 8;
             logWrite(0x0100 + regs.S);
@@ -1561,13 +1502,11 @@ void stepCPU(){
             break;
 
         case 0x60: // RTS
-            //printf("S=%02x, RTS from %04x to ", regs.S, regs.PC);
             regs.S++;
             regs.PC = memory[0x0100 + regs.S];
             regs.S++;
             regs.PC |= memory[0x0100 + regs.S] << 8;
             regs.PC++;
-            //printf("%04x (%s)\n", regs.PC, locationName(regs.PC));
             break;
 
         case 0x4c: // JMP $810c
@@ -1580,12 +1519,6 @@ void stepCPU(){
             lower = readMemory(arg21);
             upper = readMemory((arg21 + 1) & 0xffff);
             addr = (upper << 8) | lower;
-            if(addr == 0xb0e6){
-//            if(addr == 0x8567){
-                printf("(%04x) JMP to %04x (%s)\n", regs.PC, addr, locationName(addr));
-                //printf("($04) ($05) = %02x %02x\n", memory[4], memory[5]);
-                //printf("ScreenRoutineTask = %02x\n", memory[0x73c]);
-            }
             regs.PC = addr;
             break;
 
@@ -1599,8 +1532,6 @@ void stepCPU(){
             addr = (upper << 8) | lower; 
             regs.P = unpackProcessorStatus(m);
             regs.PC = addr;
-            //printf("%04x rti\n\n", regs.PC);
-            //showCPU();
             break;
 
         default:
@@ -1610,7 +1541,6 @@ void stepCPU(){
 
     if(timeFreeze) debug();
 
-    //if(timeDilation > ) {debug(); printf("\n");}
 }
 
 void readRom(){
@@ -1689,62 +1619,6 @@ void readRom(){
 
 }
 
-
-/*
-void dumpRom(){
-    FILE* file = fopen("rom.nes", "r");
-    if(file==NULL){
-        printf("failed to open rom\n");
-        exit(1);
-    }
-
-    int nread;
-    unsigned char buf[16];
-
-    int total = 0;
-
-    printf("unsigned char rom[2561 * 16] = {\n");
-
-    for(;;){
-        nread = fread(buf, 1, 16, file);
-        if(nread < 0){
-            printf("read error\n");
-            exit(1);
-        }
-
-        if(nread == 0) break;
-
-        total += nread;
-
-        printf("\t");
-        for(int i=0; i < nread; i++){
-            int c = buf[i];
-            if(c == '\\') printf("%3d", c);
-            else if(c == '\'') printf("%3d", c);
-            else if(isprint(c)) printf("'%c'", c);
-            else printf("%3d", c);
-            if(i != nread - 1) printf(",");
-        }
-
-        if(total == 40976){
-            printf("\n};\n");
-            break;
-        }
-        else{
-            printf(",\n");
-        }
-
-    }
-
-}
-*/
-
-
-// if the CPU reads $2002, then poll the ppuStatus bits and clear bit 7
-// if the PPU reaches dot 1 of line 241, set bit 7
-//    also at this time, generate an NMI if NMI-on-vblank enabled
-// if the PPU dot 1 of "pre-render line" clear bit 7
-
 void writeScreen(int row, int col, int r, int g, int b){
     if(row < 0 || row > screenH - 1){
         printf("row out of bounds (%d) screenH = %d\n", row, screenH);
@@ -1758,7 +1632,6 @@ void writeScreen(int row, int col, int r, int g, int b){
     pixel[0] = r;
     pixel[1] = g;
     pixel[2] = b;
-    //pixel[3] = 255;
 }
 
 
@@ -1792,29 +1665,6 @@ void DrawVar(int n, const char * name, int addr, int size, Color color){
     DrawText(msg, 2, n * 12, 12, color);
 }
 
-/*
-void DrawCoinDisplay(int n){
-    char msg[16];
-    DrawText("Coin = ", 2, n * 12, 12, WHITE);
-    for(int i=0; i<28; i++){
-        sprintf(msg, "%02x", memory[0x07dd + i]);
-        DrawText(msg, 2 + 40 + i * 16, n * 12, 12, WHITE);
-    }
-}
-*/
-
-
-// algorithm:
-// for each line
-// set coarse X high bits of scrollX
-// fetch first slice (pattern data and palette number)
-// load 8 pixels into a queue.
-// drop fine_x (low 3 bits of scrollX) from queue.
-// for each dot, dequeue 1 pixels worth of bits and output.
-// if queue is empty, increment coarse X.
-// if coarse X goes over 31, set coarse X to zero and switch nametable
-// continue until dot reaches end of line.
-// repeat for all lines.
 
 int coarseX = 0;
 struct RGB slicePalette[4]; // 0 1 2 or 3
@@ -2143,8 +1993,6 @@ void AudioCb(void *buffer, unsigned int numWanted){
     int16_t *out = buffer;
     float amplitude;
 
-    //printf("audio cb, wanted = %u\n", numWanted);
-
     if(audio_buffer_amount < numWanted){
         printf("audio drop out :(\n");
         for(int i = 0; i < numWanted; i++){
@@ -2176,7 +2024,6 @@ int main(){
         exit(1);
     }
 
-    //SetAudioStreamBufferSizeDefault(AUDIO_BUFFER_SIZE);
     mtx_init(&audio_mutex, mtx_plain);
     AudioStream stream = LoadAudioStream(44100, 16, 1);
     SetAudioStreamCallback(stream, AudioCb);
@@ -2212,12 +2059,8 @@ int main(){
     while(!WindowShouldClose()) {
 
         while(audio_buffer_amount < 2000){
-            //printf("generating 256");
             generate(256);
         }
-
-        //printf("Player X pos = %02x\n", memory[0x86]);
-        //printf("Player X vel = %u\n", memory[0x57]);
 
         pollGamepad();
 
@@ -2315,11 +2158,6 @@ int main(){
         }
 
 
-        //07a2, y = 07a2 / 256, x = 07a2 % 256
-        //int track = 0x0045;//player moving direction, check
-        //int track = 0x1d; // player state
-        //int track = 0x86; // player X position
-        //int track = 0x06a1; // metatilebuffer (11 cells)
         int track = 0x0776; // player offscreen bits
         DrawRing((Vector2){14*(track%64 + 1)+6,12*(track/64)+5}, 20, 24, 0, 360, 24, PURPLE);
 
@@ -2331,8 +2169,6 @@ int main(){
             }
         }
 
-
-        //drawByte(320*3/16 - 1, 240*3/16 - 1, 0);
         for(int i = 0xff; i > regs.S; i--){
             drawByte(320*3/14 - 1, 240*3/12 - 1 - (0xff - i), memory[0x0100 + i]);
         }
@@ -2421,6 +2257,7 @@ int main(){
 
         DrawText(TextFormat("MaxLeftSpeed = %d", UNCOMPLEMENT(memory[0x450])), 2, 100+10*20, 20, WHITE);
         DrawText(TextFormat("MaxRightSpeed = %u", memory[0x456]), 2, 100+11*20, 20, WHITE);
+        DrawText(TextFormat("RunningTimer = %u", memory[0x783]), 2, 100+12*20, 20, WHITE);
 /*
         DrawText(TextFormat("PlayerFacingDir = %u", memory[0x33]), 2, 100+5*20, 20, WHITE);
         DrawText(TextFormat("PlayerMovingDir = %u", memory[0x45]), 2, 100+6*20, 20, WHITE);
