@@ -2340,6 +2340,10 @@ int main(){
         DrawText(TextFormat("MaxLeftSpeed = %d", UNCOMPLEMENT(memory[0x450])), 2, 100+10*20, 20, WHITE);
         DrawText(TextFormat("MaxRightSpeed = %u", memory[0x456]), 2, 100+11*20, 20, WHITE);
         DrawText(TextFormat("RunningTimer = %u", memory[0x783]), 2, 100+12*20, 20, WHITE);
+
+        DrawText(TextFormat("Gamepad1 = %d", IsGamepadAvailable(0)), 2, 100+13*20, 20, WHITE);
+        DrawText(TextFormat("Gamepad2 = %d", IsGamepadAvailable(1)), 2, 100+14*20, 20, WHITE);
+        
 /*
         DrawText(TextFormat("PlayerFacingDir = %u", memory[0x33]), 2, 100+5*20, 20, WHITE);
         DrawText(TextFormat("PlayerMovingDir = %u", memory[0x45]), 2, 100+6*20, 20, WHITE);
