@@ -236,6 +236,7 @@ struct PPUMask ppuMask = {0,0,0,0,0,0,0,0};
 struct PPUStatus ppuStatus = {0,0,0};
 
 
+unsigned char packGamepad();
 
 int gamepadA = 0;
 int gamepadB = 0;
@@ -247,14 +248,41 @@ int gamepadLeft = 0;
 int gamepadRight = 0;
 unsigned char gamepadShiftRegister = 0;
 void pollGamepad(){
-    gamepadA = IsKeyDown(KEY_K);
-    gamepadB = IsKeyDown(KEY_J);
-    gamepadSelect = IsKeyDown(KEY_Q);
-    gamepadStart = IsKeyDown(KEY_E);
-    gamepadUp = IsKeyDown(KEY_W);
-    gamepadDown = IsKeyDown(KEY_S);
-    gamepadLeft = IsKeyDown(KEY_A);
-    gamepadRight = IsKeyDown(KEY_D);
+    if(IsGamepadAvailable(0)){
+
+        gamepadA = IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
+        gamepadB = IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT);
+        gamepadSelect =
+            IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE_LEFT) ||
+            IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_TRIGGER_2);
+        gamepadStart =
+            IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE_RIGHT) ||
+            IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE);
+        gamepadUp =
+            IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_UP) ||
+            GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y) > 0.5;
+        gamepadDown =
+            IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN) ||
+            GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y) < -0.5;
+        gamepadLeft =
+            IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT) ||
+            GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X) < -0.5;
+        gamepadRight =
+            IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT) ||
+            GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X) > 0.5;
+
+    }
+    else{
+        gamepadA = IsKeyDown(KEY_K);
+        gamepadB = IsKeyDown(KEY_J);
+        gamepadSelect = IsKeyDown(KEY_Q);
+        gamepadStart = IsKeyDown(KEY_E);
+        gamepadUp = IsKeyDown(KEY_W);
+        gamepadDown = IsKeyDown(KEY_S);
+        gamepadLeft = IsKeyDown(KEY_A);
+        gamepadRight = IsKeyDown(KEY_D);
+    }
+
 }
 
 unsigned char packGamepad(){
