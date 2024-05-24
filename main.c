@@ -26,9 +26,6 @@ extern void synth(float *out, int numSamples);
 extern void apuFrameHalfClock();
 extern void setFrameCounterPeriod(unsigned char bit);
 
-// 01900
-
-
 unsigned char memory[65536];
 
 int timeDilation = 1;
@@ -235,67 +232,109 @@ struct PPUCtrl ppuCtrl = {0,0,0,0,0,0,0};
 struct PPUMask ppuMask = {0,0,0,0,0,0,0,0};
 struct PPUStatus ppuStatus = {0,0,0};
 
+struct GamepadBits {
+    int A;
+    int B;
+    int select;
+    int start;
+    int up;
+    int down;
+    int left;
+    int right;
+};
 
-unsigned char packGamepad();
 
-int gamepadA = 0;
-int gamepadB = 0;
-int gamepadSelect = 0;
-int gamepadStart = 0;
-int gamepadUp = 0;
-int gamepadDown = 0;
-int gamepadLeft = 0;
-int gamepadRight = 0;
-unsigned char gamepadShiftRegister = 0;
+unsigned char packGamepad(struct GamepadBits *);
+
+struct GamepadBits gamepad1;
+struct GamepadBits gamepad2;
+
+unsigned char gamepadShiftRegister1 = 0;
+unsigned char gamepadShiftRegister2 = 0;
 void pollGamepad(){
     if(IsGamepadAvailable(0)){
 
-        gamepadA = IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
-        gamepadB = IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT);
-        gamepadSelect =
+        gamepad1.A = IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
+        gamepad1.B = IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT);
+        gamepad1.select =
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE_LEFT) ||
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_TRIGGER_2);
-        gamepadStart =
+        gamepad1.start =
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE_RIGHT) ||
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE);
-        gamepadUp =
+        gamepad1.up =
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_UP) ||
             GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y) > 0.5;
-        gamepadDown =
+        gamepad1.down =
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN) ||
             GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y) < -0.5;
-        gamepadLeft =
+        gamepad1.left =
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT) ||
             GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X) < -0.5;
-        gamepadRight =
+        gamepad1.right =
             IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT) ||
             GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X) > 0.5;
 
     }
     else{
-        gamepadA = IsKeyDown(KEY_K);
-        gamepadB = IsKeyDown(KEY_J);
-        gamepadSelect = IsKeyDown(KEY_Q);
-        gamepadStart = IsKeyDown(KEY_E);
-        gamepadUp = IsKeyDown(KEY_W);
-        gamepadDown = IsKeyDown(KEY_S);
-        gamepadLeft = IsKeyDown(KEY_A);
-        gamepadRight = IsKeyDown(KEY_D);
+        gamepad1.A = IsKeyDown(KEY_K);
+        gamepad1.B = IsKeyDown(KEY_J);
+        gamepad1.select = IsKeyDown(KEY_Q);
+        gamepad1.start = IsKeyDown(KEY_E);
+        gamepad1.up = IsKeyDown(KEY_W);
+        gamepad1.down = IsKeyDown(KEY_S);
+        gamepad1.left = IsKeyDown(KEY_A);
+        gamepad1.right = IsKeyDown(KEY_D);
+    }
+
+    if(IsGamepadAvailable(1)){
+
+        gamepad2.A = IsGamepadButtonDown(1, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
+        gamepad2.B = IsGamepadButtonDown(1, GAMEPAD_BUTTON_RIGHT_FACE_LEFT);
+        gamepad2.select =
+            IsGamepadButtonDown(1, GAMEPAD_BUTTON_MIDDLE_LEFT) ||
+            IsGamepadButtonDown(1, GAMEPAD_BUTTON_RIGHT_TRIGGER_2);
+        gamepad2.start =
+            IsGamepadButtonDown(1, GAMEPAD_BUTTON_MIDDLE_RIGHT) ||
+            IsGamepadButtonDown(1, GAMEPAD_BUTTON_MIDDLE);
+        gamepad2.up =
+            IsGamepadButtonDown(1, GAMEPAD_BUTTON_LEFT_FACE_UP) ||
+            GetGamepadAxisMovement(1, GAMEPAD_AXIS_LEFT_Y) > 0.5;
+        gamepad2.down =
+            IsGamepadButtonDown(1, GAMEPAD_BUTTON_LEFT_FACE_DOWN) ||
+            GetGamepadAxisMovement(1, GAMEPAD_AXIS_LEFT_Y) < -0.5;
+        gamepad2.left =
+            IsGamepadButtonDown(1, GAMEPAD_BUTTON_LEFT_FACE_LEFT) ||
+            GetGamepadAxisMovement(1, GAMEPAD_AXIS_LEFT_X) < -0.5;
+        gamepad2.right =
+            IsGamepadButtonDown(1, GAMEPAD_BUTTON_LEFT_FACE_RIGHT) ||
+            GetGamepadAxisMovement(1, GAMEPAD_AXIS_LEFT_X) > 0.5;
+
+    }
+    else{
+        gamepad1.A = 0;
+        gamepad1.B = 0;
+        gamepad1.select = 0;
+        gamepad1.start = 0;
+        gamepad1.up = 0;
+        gamepad1.down = 0;
+        gamepad1.left = 0;
+        gamepad1.right = 0;
     }
 
 }
 
-unsigned char packGamepad(){
+unsigned char packGamepad(struct GamepadBits *gp){
     unsigned char byte;
     byte = 0;
-    byte |= gamepadRight; byte <<= 1;
-    byte |= gamepadLeft; byte <<= 1;
-    byte |= gamepadDown; byte <<= 1;
-    byte |= gamepadUp; byte <<= 1;
-    byte |= gamepadStart; byte <<= 1;
-    byte |= gamepadSelect; byte <<= 1;
-    byte |= gamepadB; byte <<= 1;
-    byte |= gamepadA;
+    byte |= gp->right; byte <<= 1;
+    byte |= gp->left; byte <<= 1;
+    byte |= gp->down; byte <<= 1;
+    byte |= gp->up; byte <<= 1;
+    byte |= gp->start; byte <<= 1;
+    byte |= gp->select; byte <<= 1;
+    byte |= gp->B; byte <<= 1;
+    byte |= gp->A;
     return byte;
 }
 
@@ -563,15 +602,14 @@ unsigned char readMemory(int addr){
         return 0;
     }
     else if(addr == 0x4016){
-        //TODO gamepad support
-        byte = gamepadShiftRegister & 1;
-        gamepadShiftRegister >>= 1;
+        byte = gamepadShiftRegister1 & 1;
+        gamepadShiftRegister1 >>= 1;
         return byte;
     }
     else if(addr == 0x4017){
-        //TODO gamepad support
-        //player 2
-        return 0;
+        byte = gamepadShiftRegister2 & 1;
+        gamepadShiftRegister2 >>= 1;
+        return byte;
     }
     else if(addr >= 0x4018 && addr <= 0x401f){
         return 0;
@@ -695,8 +733,8 @@ void writeMemory(int addr, unsigned char byte){
         setEnable(1, (byte >> 1) & 1);
     }
     else if(addr == 0x4016){
-        //TODO check player 2
-        gamepadShiftRegister = packGamepad();
+        gamepadShiftRegister1 = packGamepad(&gamepad1);
+        gamepadShiftRegister2 = packGamepad(&gamepad2);
     }
     else if(addr == 0x4017){
         setFrameCounterPeriod(byte >> 7);
