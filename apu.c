@@ -107,7 +107,6 @@ void updateSweepTarget(struct SquareWave * g){
     int target = g->sweepNegate ? timer - amount : timer + amount;
     if(target < 0) target = 0;
     g->sweepTarget = target;
-    //printf("update timer=%04x shift=%02x neg=%02x amount=%d target=%04x\n", timer, shift, g->sweepNegate, amount, target);
     g->sweepMuting = timer < 8 || g->sweepTarget > 0x7ff;
 }
 
@@ -118,7 +117,6 @@ void clockSweepUnit(struct SquareWave * g){
             int period = g->sweepTarget;
             g->timerHigh = (period >> 8);
             g->timerLow  = period & 0xff;
-            //printf("sweep triggered, target = %04x timerH = %02x timerL = %02x\n", period, g->timerHigh, g->timerLow);
             float f = 1789773.0 / (16.0 * (period + 1));
             g->dt = f / 44100.0;
             updateSweepTarget(g);
@@ -132,12 +130,6 @@ void clockSweepUnit(struct SquareWave * g){
     else{
         g->sweepCounter--;
     }
-
-    if(g->sweepEnable){
-        //int timer = (g->timerHigh << 8) | g->timerLow;
-        //printf("sweep %p timer=%04x div=%u targ=%04x shift=%02x neg=%02x mut=%02x\n", g, timer, g->sweepCounter, g->sweepTarget, g->sweepShift, g->sweepNegate, g->sweepMuting);
-    }
-
 
 }
 
@@ -162,22 +154,14 @@ void clockEnvelope(struct SquareWave * g){
     }
 
     if(g->constant){
-        //printf("clockenv, constant volume = %02x\n", g->envParam);
         g->volume = ((float)g->envParam) / 15.0;
     }
     else{
-        //printf("clockenv, decay volume = %02x\n", g->envLevel);
         g->volume = ((float)g->envLevel) / 15.0;
     }
 
 }
 
-// 0 to 1, repeats,
-float phase = 0.0;
-// phase increment between samples, 1.0 represents oscillation equal to sample rate
-float dt = 220.0 / 44100.0;
-// simply silences the square wave if 1
-int enable = 0;
 
 float polyblep(float dt, float t){
     if(t < dt){
@@ -219,8 +203,6 @@ float sqrGenerator(struct SquareWave *g){
         out = fabs(out);
         out -= 0.5;
         out *= 0.1 * g->volume;
-        //out = fabs(out);
-        //out -= ;
         g->phase += g->dt/2;
         if(g->phase > 1.0) g->phase -= 1.0;
     }
@@ -287,7 +269,6 @@ void setLengthCounter(int ch, unsigned char n){
 }
 
 void setSweep(int ch, unsigned char byte){
-    //printf("set sweep ch=%d byte=%02x\n", ch, byte);
     sqr[ch].sweepEnable = byte >> 7;
     sqr[ch].sweepPeriod = (byte >> 4) & 7;
     sqr[ch].sweepNegate = (byte >> 3) & 1;
@@ -300,7 +281,6 @@ void setSweep(int ch, unsigned char byte){
 int frameCounter = 0;
 int frameCounterPeriod = 2*14915;
 int frameCounterMode = 0;
-//int frameCounter = 18641;
 void apuFrameHalfClock(){
     frameCounter++;
 
@@ -311,8 +291,6 @@ void apuFrameHalfClock(){
         // envelope, linear counter clock
         clockEnvelope(&sqr[0]);
         clockEnvelope(&sqr[1]);
-
-        //printf("sqr0 volume = %f, length = %u\n", sqr[0].volume, sqr[0].length);
     }
 
     if(wholeFrame == 7456 && halfFrame){
@@ -447,15 +425,16 @@ void clockTriangleGenerator(struct TriangleGenerator *g){
     g->output = ((g->counter >> 4) ? 0xf : 0x0) ^ (g->counter & 0xf);
 }
 
-void test(){
-    for(int i = 0; i < 50; i++){
-        //printf("counter = %02x, output = %02x\n", tri.counter, tri.output);
-        clockTriangleGenerator(&tri);
-    }
+
+
+
+void dumpState(FILE *file){
+    // frame counter
+    // frame counter mode
+    // frame counter period
+
+    // square wave generator 1 and 2
 }
-
-
-
 
 // generate numSamples more samples worth of output
 // each sample is 1/44100 seconds of time
@@ -463,14 +442,12 @@ void test(){
 // in 1/44100 seconds, the CPU cycles 40.4595 times
 void synth(float *out, int numSamples){
 
-    
-
-//    if(!sqr[0].volume && !sqr[1].volume){
+    if(!sqr[0].volume && !sqr[1].volume){
         for(int i = 0; i < numSamples; i++){
             out[i] = 0.0;
         }
         return;
-//    }
+    }
 
     for(int i = 0; i < numSamples; i++){
         out[i] = 0.0;

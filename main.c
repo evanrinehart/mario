@@ -19,7 +19,6 @@ extern void setDutyCycle(int ch, unsigned char d);
 extern void setEnvelope(int ch, unsigned char byte);
 extern void setSweep(int ch, unsigned char byte);
 extern void setLengthCounter(int ch, unsigned char n);
-//extern void setFrequency(int ch, float f);
 extern void setTimerLow(int ch, unsigned char byte);
 extern void setTimerHigh(int ch, unsigned char byte);
 extern void synth(float *out, int numSamples);
@@ -166,10 +165,6 @@ struct NESHeader {
     unsigned char flags10;
     unsigned char unused[5];
 };
-
-int prgbase = 0x8000;
-unsigned char *prg;
-unsigned char *chr;
 
 int screenW = 320;
 int screenH = 240;
@@ -684,10 +679,7 @@ void writeMemory(int addr, unsigned char byte){
                 exit(1);
             }
 
-            // this one piece of palette memory is mirrored.
-            // actually the 3 "unused" colors are also mirrored,
-            //   but mario doesn't use them.
-            // without this the sky is black
+            // this piece of palette memory is mirrored.
             if(ppuAddr == 0x3f10){
                 ppuMemory[0x3f00] = byte;
             }
@@ -790,7 +782,7 @@ unsigned char sbc(unsigned char a, unsigned char b, int carry, struct ProcessorS
 }
 
 int nextCPUDelay(){
-    // this could easily be a table, opcode -> cycles
+    // this could easily be a table
     int arg1, arg2;
     struct Instruction * ins = fetchInstruction(regs.PC, &arg1, &arg2);
     return ins->cycles;
@@ -1665,30 +1657,17 @@ void readRom(){
     printf("prg rom size = %d\n", prgsize);
     printf("chr rom size = %d\n", chrsize);
 
-    prg = malloc(prgsize);
-    chr = malloc(chrsize);
-
     for(int i = 0; i < prgsize; i++) {
-        prg[i] = rom[16 + i];
         memory[0x8000 + i] = rom[16 + i];
     }
 
     for(int i = 0; i < chrsize; i++) {
-        chr[i] = rom[16 + prgsize + i];
-        ppuMemory[i] = chr[i];
+        ppuMemory[i] = rom[16 + prgsize + i];
     }
 
     vectors.nmi   = (memory[0xfffb] << 8) | memory[0xfffa];
     vectors.reset = (memory[0xfffd] << 8) | memory[0xfffc];
     vectors.irq   = (memory[0xffff] << 8) | memory[0xfffe];
-
-    for(int j = 0; j < prgsize/16; j++){
-        printf("%4x: ", j*16);
-        for(int i = 0; i < 16; i++){
-            printf("%02x ", prg[j*16 + i]);
-        }
-        printf("\n");
-    }
 
     printf("nmi   @ $%04x\n", vectors.nmi);
     printf("reset @ $%04x\n", vectors.reset);
@@ -2037,8 +2016,6 @@ int audio_buffer_base = 0;
 int audio_buffer_amount = 0;
 
 
-float t = 0;
-
 void generate(int numSamples){
     pthread_mutex_lock(&audio_mutex);
 
@@ -2094,6 +2071,11 @@ void AudioCb(void *buffer, unsigned int numWanted){
 
 int main(){
 
+    int e = pthread_mutex_init(&audio_mutex, NULL);
+    if(e != 0){
+        printf("mutex init failed\n");
+        return 1;
+    }
 
     InitAudioDevice();
     if(IsAudioDeviceReady() == 0){
@@ -2101,7 +2083,6 @@ int main(){
         exit(1);
     }
 
-    pthread_mutex_init(&audio_mutex, NULL);
     AudioStream stream = LoadAudioStream(44100, 16, 1);
     SetAudioStreamCallback(stream, AudioCb);
     PlayAudioStream(stream);
@@ -2198,19 +2179,6 @@ int main(){
         if(IsKeyPressed(KEY_R)){ skipToRTS = 1; timeDilation = 1; }
         if(IsKeyPressed(KEY_F)){ timeFreeze = !timeFreeze; }
         if(timeFreeze && IsKeyPressed(KEY_ENTER)){ stepFlag = 1; }
-
-/*
-        if(IsKeyDown(KEY_Z)){ setEnable(1); setFrequency(220.0); key=1; }
-        if(key==1 && IsKeyUp(KEY_Z)){ setEnable(0); key=0; }
-        if(IsKeyDown(KEY_X)){ setEnable(1); setFrequency(246.9); key=2; }
-        if(key==2 && IsKeyUp(KEY_X)){ setEnable(0); key=0; }
-        if(IsKeyDown(KEY_C)){ setEnable(1); setFrequency(277.2); key=3; }
-        if(key==3 && IsKeyUp(KEY_C)){ setEnable(0); key=0; }
-        if(IsKeyDown(KEY_V)){ setEnable(1); setFrequency(293.7); key=4; }
-        if(key==4 && IsKeyUp(KEY_V)){ setEnable(0); key=0; }
-        if(IsKeyDown(KEY_B)){ setEnable(1); setFrequency(329.6); key=5; }
-        if(key==5 && IsKeyUp(KEY_B)){ setEnable(0); key=0; }
-*/
 
         uploadScreen();
 
@@ -2343,17 +2311,6 @@ int main(){
 
         DrawText(TextFormat("Gamepad1 = %d", IsGamepadAvailable(0)), 2, 100+13*20, 20, WHITE);
         DrawText(TextFormat("Gamepad2 = %d", IsGamepadAvailable(1)), 2, 100+14*20, 20, WHITE);
-        
-/*
-        DrawText(TextFormat("PlayerFacingDir = %u", memory[0x33]), 2, 100+5*20, 20, WHITE);
-        DrawText(TextFormat("PlayerMovingDir = %u", memory[0x45]), 2, 100+6*20, 20, WHITE);
-        DrawText(TextFormat("RunningTimer = %u", memory[0x783]), 2, 100+7*20, 20, WHITE);
-        DrawText(TextFormat("RunningSpeed = %u", memory[0x703]), 2, 100+8*20, 20, WHITE);
-*/
-
-        
-
-
 
         EndDrawing();
 
