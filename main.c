@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <ctype.h>
 #include <stdint.h>
 #include <math.h>
@@ -12,7 +13,6 @@
 #include <instructions.h>
 #include <colors.h>
 
-extern void test(void);
 extern void setEnable(int ch, unsigned char en);
 extern void setVolume(int ch, unsigned char vol);
 extern void setDutyCycle(int ch, unsigned char d);
@@ -24,6 +24,9 @@ extern void setTimerHigh(int ch, unsigned char byte);
 extern void synth(float *out, int numSamples);
 extern void apuFrameHalfClock();
 extern void setFrameCounterPeriod(unsigned char bit);
+
+extern FILE * openSaveFileForWriting(const char * appname, const char * filename);
+extern FILE * openSaveFileForReading(const char * appname, const char * filename);
 
 unsigned char memory[65536];
 
@@ -2014,6 +2017,7 @@ float audio_buffer[AUDIO_BUFFER_SIZE];
 int audio_buffer_ptr = 0;
 int audio_buffer_base = 0;
 int audio_buffer_amount = 0;
+int silence = 0;
 
 
 void generate(int numSamples){
@@ -2040,7 +2044,6 @@ void generate(int numSamples){
     }
 
     pthread_mutex_unlock(&audio_mutex);
-
 }
 
 void AudioCb(void *buffer, unsigned int numWanted){
@@ -2059,6 +2062,7 @@ void AudioCb(void *buffer, unsigned int numWanted){
             amplitude = audio_buffer[audio_buffer_base];
             amplitude = amplitude > 1.0f ? 1.0 : amplitude;
             amplitude = amplitude < -1.0f ? -1.0 : amplitude;
+            if(silence) amplitude = 0.0;
             out[i] = amplitude * INT16_MAX;
             audio_buffer_base++;
             audio_buffer_amount--;
@@ -2111,10 +2115,6 @@ int main(){
     int showVisual = 1;
     int showPalettes = 0;
     int showMemory = 0;
-
-    //int key = 0;
-
-
 
     SetGamepadMappings("03000000790000004e95000011010000,DragonRise Inc. NGC USB Gamepad,a:b1,b:b0,dpdown:b14,dpleft:b15,dpright:b13,dpup:b12,leftshoulder:b4,lefttrigger:a3,leftx:a0,lefty:a1~,rightshoulder:b5,righttrigger:a4,rightx:a5,righty:a2~,start:b9,x:b2,y:b3,platform:Linux,");
 
@@ -2174,7 +2174,7 @@ int main(){
         if(IsKeyPressed(KEY_F2)){ showVisual = !showVisual; }
         if(IsKeyPressed(KEY_F3)){ showPalettes = !showPalettes; }
         if(IsKeyPressed(KEY_F4)){ showNametables = !showNametables; }
-        //if(IsKeyPressed(KEY_TAB)){ silence = !silence; }
+        if(IsKeyPressed(KEY_TAB)){ silence = !silence; }
         if(IsKeyPressed(KEY_N)){ skipToNMI = 1; }
         if(IsKeyPressed(KEY_R)){ skipToRTS = 1; timeDilation = 1; }
         if(IsKeyPressed(KEY_F)){ timeFreeze = !timeFreeze; }
