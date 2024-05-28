@@ -13,6 +13,8 @@
 #include <instructions.h>
 #include <colors.h>
 
+#define APP_NAME "mario"
+
 extern void setEnable(int ch, unsigned char en);
 extern void setVolume(int ch, unsigned char vol);
 extern void setDutyCycle(int ch, unsigned char d);
@@ -2073,6 +2075,42 @@ void AudioCb(void *buffer, unsigned int numWanted){
 }
 
 
+int saveSlot = 1;
+
+void setSaveSlot(int n){
+    saveSlot = n;
+    printf("save slot %d selected\n", n);
+}
+
+void save(){
+    char filename[16];
+
+    sprintf(filename, "save%d", saveSlot);
+
+    FILE * file = openSaveFileForWriting(APP_NAME, filename);
+
+    if(file == NULL) return;
+
+    printf("saved to %s\n", filename);
+
+    fclose(file);
+}
+
+void load(){
+    char filename[16];
+
+    sprintf(filename, "save%d", saveSlot);
+
+    FILE * file = openSaveFileForReading(APP_NAME, filename);
+
+    if(file == NULL) return;
+
+    printf("loaded %s\n", filename);
+
+    fclose(file);
+}
+
+
 int main(){
 
     int e = pthread_mutex_init(&audio_mutex, NULL);
@@ -2174,11 +2212,26 @@ int main(){
         if(IsKeyPressed(KEY_F2)){ showVisual = !showVisual; }
         if(IsKeyPressed(KEY_F3)){ showPalettes = !showPalettes; }
         if(IsKeyPressed(KEY_F4)){ showNametables = !showNametables; }
+
+        if(IsKeyPressed(KEY_F5)){ save(); }
+        if(IsKeyPressed(KEY_F8)){ load(); }
+
         if(IsKeyPressed(KEY_TAB)){ silence = !silence; }
         if(IsKeyPressed(KEY_N)){ skipToNMI = 1; }
         if(IsKeyPressed(KEY_R)){ skipToRTS = 1; timeDilation = 1; }
         if(IsKeyPressed(KEY_F)){ timeFreeze = !timeFreeze; }
         if(timeFreeze && IsKeyPressed(KEY_ENTER)){ stepFlag = 1; }
+
+        if(IsKeyPressed(KEY_KP_1)){ setSaveSlot(1); }
+        if(IsKeyPressed(KEY_KP_2)){ setSaveSlot(2); }
+        if(IsKeyPressed(KEY_KP_3)){ setSaveSlot(3); }
+        if(IsKeyPressed(KEY_KP_4)){ setSaveSlot(4); }
+        if(IsKeyPressed(KEY_KP_5)){ setSaveSlot(5); }
+        if(IsKeyPressed(KEY_KP_6)){ setSaveSlot(6); }
+        if(IsKeyPressed(KEY_KP_7)){ setSaveSlot(7); }
+        if(IsKeyPressed(KEY_KP_8)){ setSaveSlot(8); }
+        if(IsKeyPressed(KEY_KP_9)){ setSaveSlot(9); }
+        if(IsKeyPressed(KEY_KP_0)){ setSaveSlot(0); }
 
         uploadScreen();
 
