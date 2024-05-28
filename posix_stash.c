@@ -4,7 +4,13 @@
 #include <sys/stat.h>
 #include <errno.h>
 
+#if defined(_WIN32)
+#define STASH_PATH "%appdata%\\roaming\\"
+#elif __unix__
 #define STASH_PATH "/.local/share/"
+#else
+#error "STASH_PATH not defined for this platform"
+#endif
 
 FILE * openSaveFileForWriting(const char * appname, const char * filename){
 

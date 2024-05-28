@@ -4,7 +4,7 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <math.h>
-
+#include <errno.h>
 #include <pthread.h>
 
 #include <raylib.h>
@@ -1961,7 +1961,7 @@ void drawSwatch(int x, int y, int pal){
     DrawRectangle(x, y, 32, 32, c);
 }
 
-void drawPalettes(int baseX, int baseY){
+void drawPalettes(){
     // universal bg color
     drawSwatch(32*0,32*0,0);
     // bg palette zero
@@ -2016,13 +2016,13 @@ pthread_mutex_t audio_mutex;
 
 #define AUDIO_BUFFER_SIZE 4096
 float audio_buffer[AUDIO_BUFFER_SIZE];
-int audio_buffer_ptr = 0;
-int audio_buffer_base = 0;
-int audio_buffer_amount = 0;
+unsigned audio_buffer_ptr = 0;
+unsigned audio_buffer_base = 0;
+unsigned audio_buffer_amount = 0;
 int silence = 0;
 
 
-void generate(int numSamples){
+void generate(unsigned numSamples){
     pthread_mutex_lock(&audio_mutex);
 
     if(numSamples >= AUDIO_BUFFER_SIZE - audio_buffer_amount){
@@ -2054,13 +2054,13 @@ void AudioCb(void *buffer, unsigned int numWanted){
 
     if(audio_buffer_amount < numWanted){
         printf("audio drop out :(\n");
-        for(int i = 0; i < numWanted; i++){
+        for(unsigned i = 0; i < numWanted; i++){
             out[i] = 0;
         }
     }
     else{
         pthread_mutex_lock(&audio_mutex);
-        for(int i = 0; i < numWanted; i++){
+        for(unsigned i = 0; i < numWanted; i++){
             amplitude = audio_buffer[audio_buffer_base];
             amplitude = amplitude > 1.0f ? 1.0 : amplitude;
             amplitude = amplitude < -1.0f ? -1.0 : amplitude;
@@ -2082,6 +2082,22 @@ void setSaveSlot(int n){
     printf("save slot %d selected\n", n);
 }
 
+void encodeIntBE(long i, unsigned char buf[4]){
+
+    unsigned long u;
+
+    if(i >= 0)
+        u = i;
+    else
+        u = 0xffffffffL + i + 1;
+
+    buf[0] = (u >> 24) & 0xff;
+    buf[1] = (u >> 16) & 0xff;
+    buf[2] = (u >>  8) & 0xff;
+    buf[3] = (u >>  0) & 0xff;
+
+}
+
 void save(){
     char filename[16];
 
@@ -2093,10 +2109,90 @@ void save(){
 
     printf("saved to %s\n", filename);
 
+/*
+int frameNo = 0;
+int scanline = 0;
+int dot = 0;
+int cpuDots = 1;
+int triplet = 3;
+
+int nmiComing = 0;
+int nmiHappening = 0;
+
+struct InterruptVectors vectors;
+struct Registers regs;
+
+unsigned char memory[65536]; // save and load everything before 0x8000 (where the rom starts)
+unsigned char ppuMemory[VRAM_SIZE]; // save and load 0x2000+ (after rom ends)
+unsigned char oam[256]; // 64 x 4 bytes
+
+int ppuAddr = 0; // also used for ppuV, internal scroll position
+int oamAddr = 0;
+int ppuT = 0; // internal coarse-x scroll position
+int ppuX = 0; // internal fine-x scroll position
+int ppuW = 0; // write toggle
+int ppuScrollX = 0;
+int ppuScrollY = 0;
+int ppuNameBase = 0x2000;
+int ppuFineX = 0;
+unsigned char ppuDataReadBuffer = 0;
+
+unsigned char gamepadShiftRegister1 = 0;
+unsigned char gamepadShiftRegister2 = 0;
+
+int coarseX = 0;
+struct RGB slicePalette[4]; // 0 1 2 or 3
+int renderBase = 0;
+unsigned char sliceQueue0 = 0; // up to 8 bits, dequeue 2 at a time
+unsigned char sliceQueue1 = 0; // up to 8 bits, dequeue 2 at a time
+int sliceQueueSize = 0; // number of pairs of bits
+
+
+APU
+
+int frameCounter = 0;
+int frameCounterPeriod = 2*14915;
+int frameCounterMode = 0;
+
+struct SquareWave {
+    int enable;
+
+    float phase;
+    float dt;
+    float volume;
+    int length; // decreases over time, silence note if it reaches zero
+    unsigned char timerHigh;
+    unsigned char timerLow;
+    unsigned char duty;//0=12.5% 1=25% 2=50% 3=25% negated
+    unsigned char loop; // if 0, stop when length counter reaches zero
+    unsigned char constant; // if 0, decreasing envelope will be used for volume
+
+    // envelope bits and bobs, some of them
+    unsigned char envStart;
+    unsigned char envParam;
+    unsigned char envCounter;
+    unsigned char envLevel;
+
+    // sweep unit
+    unsigned char sweepEnable;
+    unsigned char sweepCounter;
+    unsigned char sweepReload;
+    unsigned char sweepPeriod;
+    int sweepTarget;
+    unsigned char sweepShift;
+    unsigned char sweepNegate;
+    unsigned char sweepMuting;
+
+};
+struct SquareWave sqr[2];
+
+*/
+
     fclose(file);
 }
 
 void load(){
+
     char filename[16];
 
     sprintf(filename, "save%d", saveSlot);
@@ -2108,10 +2204,17 @@ void load(){
     printf("loaded %s\n", filename);
 
     fclose(file);
+
 }
 
 
 int main(){
+
+    unsigned char buf[4];
+    encodeIntBE(-7, buf);
+    printf("%02x %02x %02x %02x\n", buf[0], buf[1], buf[2], buf[3]);
+
+    return 0;
 
     int e = pthread_mutex_init(&audio_mutex, NULL);
     if(e != 0){
@@ -2334,7 +2437,7 @@ int main(){
         }
 
         if(showPalettes)
-            drawPalettes(0,0);
+            drawPalettes();
 
         // SprObject_X_Pos    $86
         // SprObject_X_Speed  $57
