@@ -2210,12 +2210,6 @@ void load(){
 
 int main(){
 
-    unsigned char buf[4];
-    encodeIntBE(-7, buf);
-    printf("%02x %02x %02x %02x\n", buf[0], buf[1], buf[2], buf[3]);
-
-    return 0;
-
     int e = pthread_mutex_init(&audio_mutex, NULL);
     if(e != 0){
         printf("mutex init failed\n");
