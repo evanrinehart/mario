@@ -30,7 +30,7 @@ FILE * openSaveFileForWriting(const char * appname, const char * filename){
     strcat(buf, STASH_PATH);
     strcat(buf, appname);
 
-    printf("computed stash path (save): %s\n", buf);
+    //printf("computed stash path (save): %s\n", buf);
 
     int e = mkdir(buf, 0700);
     if(e < 0 && errno != EEXIST){
@@ -73,7 +73,7 @@ FILE * openSaveFileForReading(const char * appname, const char * filename){
     strcat(buf, STASH_PATH);
     strcat(buf, appname);
 
-    printf("computed stash path (load): %s\n", buf);
+    //printf("computed stash path (load): %s\n", buf);
 
     struct stat s;
     int e = stat(buf, &s);

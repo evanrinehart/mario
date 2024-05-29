@@ -2098,6 +2098,58 @@ void encodeIntBE(long i, unsigned char buf[4]){
 
 }
 
+long decodeIntBE(unsigned char buf[4]){
+    
+    unsigned long u = 0;
+
+    u |= buf[3] <<  0;
+    u |= buf[2] <<  8;
+    u |= buf[1] << 16;
+    u |= buf[0] << 24;
+
+    if(u < 0x7ffffffL)
+        return u;
+    else
+        return (0xffffffffL - u) - 1;
+
+}
+
+void putInt(FILE * file, long i){
+    unsigned char buf[4];
+    encodeIntBE(i, buf);
+    int n = fwrite(buf, 1, 4, file);
+    if(n < 4){
+        printf("putInt failed: %s\n", strerror(errno));
+        exit(1);
+    }
+}
+
+void putBlob(FILE * file, const unsigned char * ptr, size_t n){
+    int written = fwrite(ptr, 1, n, file);
+    if(written < n){
+        printf("putBlob n=%zu failed: %s\n", n, strerror(errno));
+        exit(1);
+    }
+}
+
+long getInt(FILE * file){
+    unsigned char buf[4];
+    int n = fread(buf, 1, 4, file);
+    if(n < 4){
+        printf("getInt failed: %s\n", strerror(errno));
+        exit(1);
+    }
+    return decodeIntBE(buf);
+}
+
+void getBlob(FILE * file, unsigned char * ptr, size_t n){
+    int numRead = fread(ptr, 1, n, file);
+    if(numRead < n){
+        printf("getBlob n=%zu failed: %s\n", n, strerror(errno));
+        exit(1);
+    }
+}
+
 void save(){
     char filename[16];
 
@@ -2107,86 +2159,53 @@ void save(){
 
     if(file == NULL) return;
 
+    putInt(file, frameNo);
+    putInt(file, scanline);
+    putInt(file, dot);
+    putInt(file, cpuDots);
+    putInt(file, triplet);
+    putInt(file, nmiComing);
+    putInt(file, nmiHappening);
+    putInt(file, vectors.nmi);
+    putInt(file, vectors.reset);
+    putInt(file, vectors.irq);
+    putInt(file, regs.A);
+    putInt(file, regs.X);
+    putInt(file, regs.Y);
+    putInt(file, regs.S);
+    putInt(file, regs.PC);
+    putInt(file, regs.P.carry);
+    putInt(file, regs.P.zero);
+    putInt(file, regs.P.interruptDisable);
+    putInt(file, regs.P.decimal);
+    putInt(file, regs.P.overflow);
+    putInt(file, regs.P.negative);
+    putBlob(file, memory, 0x1000);
+    putBlob(file, ppuMemory+0x2000, 0x2000);
+    putBlob(file, oam, 256);
+    putInt(file, ppuAddr);
+    putInt(file, oamAddr);
+    putInt(file, ppuT);
+    putInt(file, ppuX);
+    putInt(file, ppuScrollX);
+    putInt(file, ppuScrollY);
+    putInt(file, ppuNameBase);
+    putInt(file, ppuFineX);
+    putInt(file, ppuDataReadBuffer);
+    putInt(file, gamepadShiftRegister1);
+    putInt(file, gamepadShiftRegister2);
+    putInt(file, coarseX);
+    for(int i = 0; i < 4; i++){
+        putInt(file, slicePalette[i].r);
+        putInt(file, slicePalette[i].g);
+        putInt(file, slicePalette[i].b);
+    }
+    putInt(file, renderBase);
+    putInt(file, sliceQueue0);
+    putInt(file, sliceQueue1);
+    putInt(file, sliceQueueSize);
+
     printf("saved to %s\n", filename);
-
-/*
-int frameNo = 0;
-int scanline = 0;
-int dot = 0;
-int cpuDots = 1;
-int triplet = 3;
-
-int nmiComing = 0;
-int nmiHappening = 0;
-
-struct InterruptVectors vectors;
-struct Registers regs;
-
-unsigned char memory[65536]; // save and load everything before 0x8000 (where the rom starts)
-unsigned char ppuMemory[VRAM_SIZE]; // save and load 0x2000+ (after rom ends)
-unsigned char oam[256]; // 64 x 4 bytes
-
-int ppuAddr = 0; // also used for ppuV, internal scroll position
-int oamAddr = 0;
-int ppuT = 0; // internal coarse-x scroll position
-int ppuX = 0; // internal fine-x scroll position
-int ppuW = 0; // write toggle
-int ppuScrollX = 0;
-int ppuScrollY = 0;
-int ppuNameBase = 0x2000;
-int ppuFineX = 0;
-unsigned char ppuDataReadBuffer = 0;
-
-unsigned char gamepadShiftRegister1 = 0;
-unsigned char gamepadShiftRegister2 = 0;
-
-int coarseX = 0;
-struct RGB slicePalette[4]; // 0 1 2 or 3
-int renderBase = 0;
-unsigned char sliceQueue0 = 0; // up to 8 bits, dequeue 2 at a time
-unsigned char sliceQueue1 = 0; // up to 8 bits, dequeue 2 at a time
-int sliceQueueSize = 0; // number of pairs of bits
-
-
-APU
-
-int frameCounter = 0;
-int frameCounterPeriod = 2*14915;
-int frameCounterMode = 0;
-
-struct SquareWave {
-    int enable;
-
-    float phase;
-    float dt;
-    float volume;
-    int length; // decreases over time, silence note if it reaches zero
-    unsigned char timerHigh;
-    unsigned char timerLow;
-    unsigned char duty;//0=12.5% 1=25% 2=50% 3=25% negated
-    unsigned char loop; // if 0, stop when length counter reaches zero
-    unsigned char constant; // if 0, decreasing envelope will be used for volume
-
-    // envelope bits and bobs, some of them
-    unsigned char envStart;
-    unsigned char envParam;
-    unsigned char envCounter;
-    unsigned char envLevel;
-
-    // sweep unit
-    unsigned char sweepEnable;
-    unsigned char sweepCounter;
-    unsigned char sweepReload;
-    unsigned char sweepPeriod;
-    int sweepTarget;
-    unsigned char sweepShift;
-    unsigned char sweepNegate;
-    unsigned char sweepMuting;
-
-};
-struct SquareWave sqr[2];
-
-*/
 
     fclose(file);
 }
@@ -2201,7 +2220,55 @@ void load(){
 
     if(file == NULL) return;
 
-    printf("loaded %s\n", filename);
+    frameNo = getInt(file);
+    scanline = getInt(file);
+    dot = getInt(file);
+    cpuDots = getInt(file);
+    triplet = getInt(file);
+    nmiComing = getInt(file);
+    nmiHappening = getInt(file);
+    vectors.nmi = getInt(file);
+    vectors.reset = getInt(file);
+    vectors.irq = getInt(file);
+    regs.A = getInt(file);
+    regs.X = getInt(file);
+    regs.Y = getInt(file);
+    regs.S = getInt(file);
+    regs.PC = getInt(file);
+    regs.P.carry = getInt(file);
+    regs.P.zero = getInt(file);
+    regs.P.interruptDisable = getInt(file);
+    regs.P.decimal = getInt(file);
+    regs.P.overflow = getInt(file);
+    regs.P.negative = getInt(file);
+    getBlob(file, memory, 0x1000);
+    getBlob(file, ppuMemory+0x2000, 0x2000);
+    getBlob(file, oam, 256);
+    ppuAddr = getInt(file);
+    oamAddr = getInt(file);
+    ppuT = getInt(file);
+    ppuX = getInt(file);
+    ppuScrollX = getInt(file);
+    ppuScrollY = getInt(file);
+    ppuNameBase = getInt(file);
+    ppuFineX = getInt(file);
+    ppuDataReadBuffer = getInt(file);
+    gamepadShiftRegister1 = getInt(file);
+    gamepadShiftRegister2 = getInt(file);
+    coarseX = getInt(file);
+
+    for(int i = 0; i < 4; i++){
+        slicePalette[i].r = getInt(file);
+        slicePalette[i].g = getInt(file);
+        slicePalette[i].b = getInt(file);
+    }
+
+    renderBase = getInt(file);
+    sliceQueue0 = getInt(file);
+    sliceQueue1 = getInt(file);
+    sliceQueueSize = getInt(file);
+
+    printf("loaded from %s\n", filename);
 
     fclose(file);
 
