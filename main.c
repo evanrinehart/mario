@@ -2014,7 +2014,7 @@ void drawPalettes(){
 
 pthread_mutex_t audio_mutex;
 
-#define AUDIO_BUFFER_SIZE 4096
+#define AUDIO_BUFFER_SIZE (2 * 4096)
 float audio_buffer[AUDIO_BUFFER_SIZE];
 unsigned audio_buffer_ptr = 0;
 unsigned audio_buffer_base = 0;
@@ -2297,7 +2297,7 @@ int main(){
     resetCPU();
     showCPU();
 
-    InitWindow(screenW * screenScale, screenH * screenScale, "Zintendo Entertainment System");
+    InitWindow(screenW * screenScale, screenH * screenScale, "mario");
     SetTargetFPS(60);
 
     screenImg = GenImageColor(screenW,screenH,BLUE);
@@ -2317,13 +2317,14 @@ int main(){
     int showVisual = 1;
     int showPalettes = 0;
     int showMemory = 0;
+    int showDebug = 0;
 
     SetGamepadMappings("03000000790000004e95000011010000,DragonRise Inc. NGC USB Gamepad,a:b1,b:b0,dpdown:b14,dpleft:b15,dpright:b13,dpup:b12,leftshoulder:b4,lefttrigger:a3,leftx:a0,lefty:a1~,rightshoulder:b5,righttrigger:a4,rightx:a5,righty:a2~,start:b9,x:b2,y:b3,platform:Linux,");
 
 
     while(!WindowShouldClose()) {
 
-        while(audio_buffer_amount < 2000){
+        while(audio_buffer_amount < 4000){
             generate(256);
         }
 
@@ -2372,10 +2373,11 @@ int main(){
         if(IsKeyPressed(KEY_THREE)){ timeDilation = 1000; }
         if(IsKeyPressed(KEY_TWO)){ timeDilation = 5000; }
         if(IsKeyPressed(KEY_ONE)){ timeDilation = 200000; }
-        if(IsKeyPressed(KEY_F1)){ showMemory = !showMemory; }
+        if(IsKeyPressed(KEY_F1)){ showMemory = !showMemory; showDebug = !showDebug; }
         if(IsKeyPressed(KEY_F2)){ showVisual = !showVisual; }
         if(IsKeyPressed(KEY_F3)){ showPalettes = !showPalettes; }
         if(IsKeyPressed(KEY_F4)){ showNametables = !showNametables; }
+        if(IsKeyPressed(KEY_F12)){ TakeScreenshot("screenshot.png"); }
 
         if(IsKeyPressed(KEY_F5)){ save(); }
         if(IsKeyPressed(KEY_F8)){ load(); }
@@ -2504,6 +2506,7 @@ int main(){
         // SprObject_X_Speed  $57
         // Player_XSpeedAbsolute $700
 
+        if(showDebug){
         DrawText(TextFormat("Player_PageLoc = %u", memory[0x6d]), 2, 100+2*20, 20, WHITE);
         DrawText(TextFormat("Player X Pos = %u", memory[0x86]), 2, 100+3*20, 20, WHITE);
 
@@ -2528,6 +2531,7 @@ int main(){
 
         DrawText(TextFormat("Gamepad1 = %d", IsGamepadAvailable(0)), 2, 100+13*20, 20, WHITE);
         DrawText(TextFormat("Gamepad2 = %d", IsGamepadAvailable(1)), 2, 100+14*20, 20, WHITE);
+        }
 
         EndDrawing();
 
